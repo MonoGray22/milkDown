@@ -6,7 +6,7 @@ import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { blockPlugin } from './blockAction.js'; // 自定义块级插件
 import { lockTableListener, unlockTableListener } from './listener.js'; // 自定义监听插件
 import { nonEditable, InsertNonEditableCommand, UnwrapNonEditableCommand } from './nonEditableNode.js'; // 不可编辑节点
-// import { customLinkPlugin } from './customLink.js'; // 自定义链接
+import { customLinkPlugin } from './customLink.js'; // 自定义链接
 import { selectionTooltipPlugin } from './selectAction.js'; // 自定义悬浮插件
 import { commonmark, syncHeadingIdPlugin } from "@milkdown/kit/preset/commonmark";
 import { defaultKeymap } from '@codemirror/commands'
@@ -120,7 +120,7 @@ async function createEditor () {
   }).use(listener)
     .use(collab)
     .use(nonEditable)
-    // .use(customLinkPlugin)
+    .use(customLinkPlugin)
     .use(commonmark.filter(x => x !== syncHeadingIdPlugin))
     .use(selectionTooltipPlugin).use(blockPlugin)
     .use(unlockTableListener).use(lockTableListener)
@@ -180,9 +180,9 @@ function clearData () {
 }
 
 onMounted(() => {
-  // nextTick(() => {
-  //   createEditor();
-  // })
+  nextTick(() => {
+    createEditor();
+  })
   window.addEventListener('message', receiveMessage);
   window.addEventListener('DOMContentLoaded', () => {
     window.parent.postMessage({ action: 'ready' }, '*')
