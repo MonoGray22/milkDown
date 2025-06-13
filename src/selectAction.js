@@ -4,6 +4,13 @@ import { TooltipProvider } from '@milkdown/kit/plugin/tooltip'
 
 let currEditorView = null;
 
+function isInList (selection) {
+  const { $from } = selection;
+  return $from.path.some((node) => {
+    return node?.type?.name === 'bullet_list' || node?.type?.name === 'ordered_list';
+  });
+}
+
 // 清除选取
 function clearSelection (view) {
   const { state, dispatch } = view;
@@ -37,7 +44,7 @@ const getSelectedNodeType = (state) => {
   return null;
 };
 
-const createTooltipContent = (type) => {
+const createTooltipContent = (type, selection) => {
   const base = `
     <div class="custom-ai-style" data-label="syntaxCheck">语法检查</div>
     <div class="custom-ai-style" data-label="logicVerification">逻辑验证</div>
@@ -46,19 +53,23 @@ const createTooltipContent = (type) => {
     <div class="custom-ai-style" data-label="abbreviate">缩写</div>
   `;
   const map = {
-    nonEditable: `
-      <div class="custom-ai-style" data-label="unlockTable">解锁</div>
-    `,
+    nonEditable: `<div class="custom-ai-style" data-label="unlockTable">解锁</div>`,
     code_block: ' ',
     hr: ' ',
     customLink: ' ',
     image: ' ',
-    table: `
-      <div class="custom-ai-style" data-label="lockTable">锁定</div>
-    `,
+    blockquote: '<div class="custom-ai-style" data-label="lockTable">锁定</div>',
+    heading: '<div class="custom-ai-style" data-label="lockTable">锁定</div>',
+    ordered_list: '<div class="custom-ai-style" data-label="lockTable">锁定</div>',
+    bullet_list: '<div class="custom-ai-style" data-label="lockTable">锁定</div>',
+    paragraph: `<div class="custom-ai-style" data-label="lockTable">锁定</div>`,
+    table: `<div class="custom-ai-style" data-label="lockTable">锁定</div>`,
     default: base
   };
-  return map[type] || map.default;
+  if (selection instanceof TextSelection && !isInList(selection)) {
+    return map.default
+  }
+  return map[type] || ' ';
 };
 
 const replaceSelectedText = (editorView, newText) => {
@@ -123,7 +134,16 @@ export const selectionTooltipPlugin = $prose((ctx) => {
       return {
         update (view) {
           const type = getSelectedNodeType(view.state);
-          tooltip.innerHTML = createTooltipContent(type);
+          const { state } = view;
+          const { selection } = state;
+
+          //避免空选区触发
+          if (selection.empty) {
+            provider.hide();
+            return;
+          }
+
+          tooltip.innerHTML = createTooltipContent(type, selection);
           provider.update(view);
         },
         destroy: provider.destroy,

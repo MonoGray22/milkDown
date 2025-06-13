@@ -2,7 +2,7 @@ import { $node, $command, $prose } from '@milkdown/utils';
 import { schemaCtx } from '@milkdown/core';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 
-// 定义不可编辑节点
+// 定义不可编辑节点(div)
 export const nonEditableNode = $node('nonEditable', () => ({
   group: 'block',
   content: 'block+',
@@ -49,6 +49,48 @@ export const nonEditableNode = $node('nonEditable', () => ({
       node.content.forEach(child => state.next(child));
     },
   },
+}));
+
+export const nonEditableInline = $node('nonEditableInline', () => ({
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  draggable: false,
+  attrs: {
+    user: { default: null },
+  },
+  parseDOM: [{
+    tag: 'span[data-type="non-editable-inline"]',
+    getAttrs: dom => {
+      if (dom instanceof HTMLElement) {
+        return { user: dom.getAttribute('data-user') };
+      }
+    },
+  }],
+  toDOM: node => [
+    'span',
+    {
+      'data-type': 'non-editable-inline',
+      'data-user': node.attrs.user,
+      class: 'non-editable-inline',
+      contentEditable: 'false',
+      style: 'background: #eee; padding: 2px 4px; border-radius: 4px;',
+    },
+    node.attrs.user || '不可编辑',
+  ],
+  parseMarkdown: {
+    match: (node) => node.type === 'nonEditableInline',
+    runner: (state, node) => {
+      state.addNode('nonEditableInline', undefined, { user: node.attrs.user });
+    }
+  },
+  toMarkdown: {
+    match: node => node.type.name === 'nonEditableInline',
+    runner: (state, node) => {
+      state.write(`{{nonEditable:${node.attrs.user}}}`);
+    }
+  }
 }));
 
 // 创建阻止编辑的插件
@@ -149,19 +191,24 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
     const slice = state.doc.slice(from, to);
     const fragment = slice.content;
 
+    console.log('fragment', fragment)
     // 判断选中的是一个节点还是多个
     const content = fragment.childCount === 1
       ? [fragment.firstChild]
-      : fragment.toArray();
+      : fragment.content;
+    console.log('content', content)
     // 只允许锁定表格
-    if (content.some(node => node.type.name !== 'table')) {
-      return false;
+    // if (content.some(node => node.type.name !== 'table')) {
+    //   return false;
+    // }
+    let wrappedNode = null;
+    // if (content.some(node => node.type.name === 'list_item')) {
+    if (false) {
+      wrappedNode = schema.nodes['nonEditableInline'].create({ user }, content);
+    } else {
+      wrappedNode = nodeType.create({ user }, content);
     }
-    const wrappedNode = nodeType.create(
-      { user },
-      content);
     if (!wrappedNode) return false;
-
     const transaction = state.tr.replaceRangeWith(from, to, wrappedNode);
     dispatch?.(transaction);
     return true;
@@ -195,4 +242,4 @@ export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => (
   };
 });
 
-export const nonEditable = [nonEditableNode, nonEditablePlugin, InsertNonEditableCommand, UnwrapNonEditableCommand];
+export const nonEditable = [nonEditableNode, nonEditableInline, nonEditablePlugin, InsertNonEditableCommand, UnwrapNonEditableCommand];
