@@ -119,9 +119,9 @@ async function createEditor () {
     });
   }).use(listener)
     .use(collab)
+    .use(commonmark.filter(x => x !== syncHeadingIdPlugin))
     .use(nonEditable)
     .use(customLinkPlugin)
-    .use(commonmark.filter(x => x !== syncHeadingIdPlugin))
     .use(selectionTooltipPlugin).use(blockPlugin)
     .use(unlockTableListener).use(lockTableListener)
     .use(upload)
@@ -180,9 +180,9 @@ function clearData () {
 }
 
 onMounted(() => {
-  nextTick(() => {
-    createEditor();
-  })
+  // nextTick(() => {
+  //   createEditor();
+  // })
   window.addEventListener('message', receiveMessage);
   window.addEventListener('DOMContentLoaded', () => {
     window.parent.postMessage({ action: 'ready' }, '*')

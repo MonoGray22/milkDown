@@ -1,14 +1,33 @@
 import { $prose } from '@milkdown/utils';
-import { Plugin, TextSelection } from 'prosemirror-state';
+import { Plugin, TextSelection, } from 'prosemirror-state';
 import { TooltipProvider } from '@milkdown/kit/plugin/tooltip'
 
 let currEditorView = null;
 
+function findParent (predicate) {
+  return ($pos) => {
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      const node = $pos.node(depth)
+
+      if (predicate(node)) {
+        const from = $pos.before(depth)
+        const to = $pos.after(depth)
+        return { from, to, node, }
+      }
+    }
+
+    return undefined
+  }
+}
+
 function isInList (selection) {
-  const { $from } = selection;
-  return $from.path.some((node) => {
-    return node?.type?.name === 'bullet_list' || node?.type?.name === 'ordered_list';
-  });
+  const type = selection.$from.node(selection.$from.depth - 1)?.type
+  return type?.name === 'list_item'
+}
+
+function isInTable (selection) {
+  const $pos = selection.$anchor
+  return findParent((node) => node.type.name === 'table')($pos);
 }
 
 // 清除选取
@@ -50,10 +69,10 @@ const createTooltipContent = (type, selection) => {
     <div class="custom-ai-style" data-label="logicVerification">逻辑验证</div>
     <div class="custom-ai-style" data-label="sumUp">总结</div>
     <div class="custom-ai-style" data-label="expandOn">扩写</div>
-    <div class="custom-ai-style" data-label="abbreviate">缩写</div>
-  `;
+    <div class="custom-ai-style" data-label="abbreviate">缩写</div>`;
   const map = {
     nonEditable: `<div class="custom-ai-style" data-label="unlockTable">解锁</div>`,
+    nonEditableList: `<div class="custom-ai-style" data-label="unlockTable">解锁</div>`,
     code_block: ' ',
     hr: ' ',
     customLink: ' ',
@@ -66,7 +85,16 @@ const createTooltipContent = (type, selection) => {
     table: `<div class="custom-ai-style" data-label="lockTable">锁定</div>`,
     default: base
   };
-  if (selection instanceof TextSelection && !isInList(selection)) {
+  // 表格单元格非文本
+  if (isInTable(selection) && !(selection instanceof TextSelection)) {
+    return ' ';
+  }
+  // 是否纯文本
+  if (selection instanceof TextSelection) {
+    // 是否列表类型文本
+    if (!isInList(selection) && ['ordered_list', 'bullet_list'].includes(type)) {
+      return map[type] || ' ';
+    }
     return map.default
   }
   return map[type] || ' ';
