@@ -43,6 +43,7 @@ export const underlineInputRule = $inputRule(() => {
   );
 });
 
+// 3. 粘贴时展示下划线
 export const remarkUnderline = $remark('remark-underline', () => () => (tree) => {
   const visit = (node, parent) => {
     if (Array.isArray(node.children)) {
@@ -85,5 +86,5 @@ export const remarkUnderline = $remark('remark-underline', () => () => (tree) =>
   visit(tree);
 });
 
-// 3. 注册 Mark 插件
+// 4. 注册 Mark 插件
 export const underline = [remarkUnderline, underlineMark, underlineInputRule];

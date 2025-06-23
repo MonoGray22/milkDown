@@ -19,8 +19,8 @@ import { basicSetup } from 'codemirror'
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { commonmark, syncHeadingIdPlugin } from "@milkdown/kit/preset/commonmark";
 import { nord } from "@milkdown/theme-nord";
-import { selectionTooltipPlugin } from './selectAction.js'; // 自定义悬浮插件
-import { blockPlugin } from './blockAction.js'; // 自定义块级插件
+import { selectionTooltipPlugin } from './customParser/selectAction.js'; // 自定义悬浮插件
+import { blockPlugin } from './customParser/blockAction.js'; // 自定义块级插件
 import { Doc } from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';

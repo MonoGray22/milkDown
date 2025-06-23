@@ -3,12 +3,13 @@ import { collab, collabServiceCtx } from "@milkdown/plugin-collab";
 import { getMarkdown, getHTML } from '@milkdown/utils';
 import { commandsCtx } from "@milkdown/kit/core";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
-import { blockPlugin } from './blockAction.js'; // 自定义块级插件
-import { lockTableListener, unlockTableListener } from './listener.js'; // 自定义监听插件
-import { nonEditable, InsertNonEditableCommand, UnwrapNonEditableCommand } from './nonEditableNode.js'; // 不可编辑节点
-import { customLinkPlugin } from './customLink.js'; // 自定义链接
-import { selectionTooltipPlugin } from './selectAction.js'; // 自定义悬浮插件
-import { underline } from './customUnderline.js'; // 下划线
+import { blockPlugin } from './customParser/blockAction.js'; // 自定义块级插件
+import { lockTableListener, unlockTableListener } from './customParser/listener.js'; // 自定义监听插件
+import { nonEditable, InsertNonEditableCommand, UnwrapNonEditableCommand } from './customParser/nonEditableNode.js'; // 不可编辑节点
+import { customLinkPlugin } from './customParser/customLink.js'; // 自定义链接
+import { selectionTooltipPlugin } from './customParser/selectAction.js'; // 自定义悬浮插件
+import { underline } from './customParser/customUnderline.js'; // 下划线
+import { video } from './customParser/customVideo'; // 视频
 import { commonmark, syncHeadingIdPlugin } from "@milkdown/kit/preset/commonmark";
 import { imageBlockComponent } from '@milkdown/kit/component/image-block'
 import { defaultKeymap } from '@codemirror/commands'
@@ -124,6 +125,7 @@ async function createEditor () {
     .use(commonmark.filter(x => x !== syncHeadingIdPlugin))
     .use(imageBlockComponent)
     .use(underline)
+    .use(video)
     .use(nonEditable)
     .use(customLinkPlugin)
     .use(selectionTooltipPlugin).use(blockPlugin)
@@ -184,9 +186,9 @@ function clearData () {
 }
 
 onMounted(() => {
-  // nextTick(() => {
-  //   createEditor();
-  // })
+  nextTick(() => {
+    createEditor();
+  })
   window.addEventListener('message', receiveMessage);
   window.addEventListener('DOMContentLoaded', () => {
     window.parent.postMessage({ action: 'ready' }, '*')
