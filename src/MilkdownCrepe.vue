@@ -8,7 +8,9 @@ import { lockTableListener, unlockTableListener } from './listener.js'; // 自�
 import { nonEditable, InsertNonEditableCommand, UnwrapNonEditableCommand } from './nonEditableNode.js'; // 不可编辑节点
 import { customLinkPlugin } from './customLink.js'; // 自定义链接
 import { selectionTooltipPlugin } from './selectAction.js'; // 自定义悬浮插件
+import { underline } from './customUnderline.js'; // 下划线
 import { commonmark, syncHeadingIdPlugin } from "@milkdown/kit/preset/commonmark";
+import { imageBlockComponent } from '@milkdown/kit/component/image-block'
 import { defaultKeymap } from '@codemirror/commands'
 import { basicSetup } from 'codemirror'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -120,6 +122,8 @@ async function createEditor () {
   }).use(listener)
     .use(collab)
     .use(commonmark.filter(x => x !== syncHeadingIdPlugin))
+    .use(imageBlockComponent)
+    .use(underline)
     .use(nonEditable)
     .use(customLinkPlugin)
     .use(selectionTooltipPlugin).use(blockPlugin)

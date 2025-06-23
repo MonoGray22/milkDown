@@ -9,7 +9,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, "src"),
-      '#minpath': resolve(__dirname, 'node_modules/vfile/lib/minpath.js')
+      // '#minpath': resolve(__dirname, 'node_modules/vfile/lib/minpath.js')
     },
   },
   server: {
