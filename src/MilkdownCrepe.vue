@@ -121,8 +121,8 @@ async function createEditor () {
       };
     });
   }).use(listener)
-    .use(collab)
     .use(commonmark.filter(x => x !== syncHeadingIdPlugin))
+    .use(collab)
     .use(imageBlockComponent)
     .use(underline)
     .use(video)
@@ -207,6 +207,7 @@ onBeforeUnmount(() => {
 .milkdown-editor-style {
   width: 100%;
   height: 100%;
+  // height: 40%;
   overflow: auto;
   :deep(.milkdown) {
     height: 100%;

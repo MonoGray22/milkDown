@@ -1,26 +1,31 @@
 <script setup>
 import { collab, collabServiceCtx } from "@milkdown/plugin-collab";
 import { getMarkdown, getHTML } from '@milkdown/utils';
+import { commandsCtx, Editor, rootCtx } from "@milkdown/kit/core";
 import { clipboard } from '@milkdown/plugin-clipboard'
+import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
+import { blockPlugin } from './customParser/blockAction.js'; // 自定义块级插件
+import { lockTableListener, unlockTableListener } from './customParser/listener.js'; // 自定义监听插件
+import { nonEditable, InsertNonEditableCommand, UnwrapNonEditableCommand } from './customParser/nonEditableNode.js'; // 不可编辑节点
+import { customLinkPlugin } from './customParser/customLink.js'; // 自定义链接
+import { selectionTooltipPlugin } from './customParser/selectAction.js'; // 自定义悬浮插件
+import { underline } from './customParser/customUnderline.js'; // 下划线
+import { video } from './customParser/customVideo'; // 视频
 import { block } from '@milkdown/kit/plugin/block';
 import { upload, uploadConfig } from '@milkdown/kit/plugin/upload';
 import { history } from '@milkdown/kit/plugin/history'
-import { Editor, rootCtx } from "@milkdown/kit/core";
 import { listItemBlockComponent } from '@milkdown/kit/component/list-item-block'
-import { configureLinkTooltip, linkTooltipPlugin, } from '@milkdown/kit/component/link-tooltip'
-import { tableBlock } from '@milkdown/kit/component/table-block'
+import { codeBlockComponent, codeBlockConfig } from '@milkdown/kit/component/code-block'
 import { imageBlockComponent } from '@milkdown/kit/component/image-block'
+import { tableBlock } from '@milkdown/kit/component/table-block'
 import { defaultKeymap } from '@codemirror/commands'
 import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { keymap } from '@codemirror/view'
-import { codeBlockComponent, codeBlockConfig, } from '@milkdown/kit/component/code-block'
 import { basicSetup } from 'codemirror'
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { commonmark, syncHeadingIdPlugin } from "@milkdown/kit/preset/commonmark";
 import { nord } from "@milkdown/theme-nord";
-import { selectionTooltipPlugin } from './customParser/selectAction.js'; // 自定义悬浮插件
-import { blockPlugin } from './customParser/blockAction.js'; // 自定义块级插件
 import { Doc } from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -38,16 +43,41 @@ const websocketParams = ref({ // websocket参数
   room: 'markdown', // 房间号
 })
 
-function createEditor () {
-  wsProvider && wsProvider.disconnect();
-  collabService && collabService.disconnect();
-  editor && editor.destroy(true);
+async function createEditor () {
+  await wsProvider && wsProvider.disconnect();
+  await collabService && collabService.disconnect();
+  await editor && editor.destroy(true);
+
   const doc = new Doc();
   wsProvider = new WebsocketProvider(websocketParams.value.url, websocketParams.value.room, doc);
   const randomColor = () => Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
 
+  wsProvider.awareness.setLocalStateField('user', {
+    color: `#${randomColor()}`,
+    name: `${userInfo.value.name}`
+  });
+
   editor = Editor.make().config((ctx) => {
     ctx.set(rootCtx, editorRoot.value);
+    // 锁定
+    ctx.get(listenerCtx).lockTable = () => {
+      requestAnimationFrame(() => {
+        editor.action((ctx) => {
+          const commandManager = ctx.get(commandsCtx);
+          commandManager.call(InsertNonEditableCommand.key, userInfo.value.name);
+        });
+      });
+    };
+    // 解锁
+    ctx.get(listenerCtx).unlockTable = () => {
+      requestAnimationFrame(() => {
+        editor.action((ctx) => {
+          const commandManager = ctx.get(commandsCtx);
+          commandManager.call(UnwrapNonEditableCommand.key, userInfo.value.name);
+        });
+      });
+    };
+    // code 
     ctx.update(codeBlockConfig.key, (defaultConfig) => ({
       ...defaultConfig,
       languages,
@@ -64,7 +94,7 @@ function createEditor () {
           return '<span>正在上传中...</span>'
         },
         uploader: async (file, schema) => {
-          const { url, config } = uploadParams.value;
+          const { url, config, imagePrefix } = uploadParams.value;
           let formdata = new FormData();
           formdata.append('image', file[0]);
           try {
@@ -77,8 +107,8 @@ function createEditor () {
               },
               body: formdata
             });
-            console.log(res)
-            return [schema.nodes.image.createAndFill({ src: res.data.url })]
+            const json = await res.json();
+            return [schema.nodes.image.createAndFill({ src: imagePrefix + json.url })]
           } catch (error) {
             return []
           }
@@ -86,27 +116,26 @@ function createEditor () {
       };
     });
   }).config(nord)
-    .config(configureLinkTooltip)
-    .use(selectionTooltipPlugin)
-    .use(blockPlugin)
-    .use(block)
-    .use(collab)
-    .use(history)
+    .use(listener)
     .use(commonmark.filter(x => x !== syncHeadingIdPlugin))
-    .use(codeBlockComponent)
-    .use(tableBlock) // 表格
+    .use(history)
+    .use(collab)
     .use(imageBlockComponent) // 图片
-    .use(listItemBlockComponent) // 列表
-    .use(linkTooltipPlugin) // 悬浮链接
-    .use(gfm)
+    .use(underline)
+    .use(video)
+    .use(nonEditable)
+    .use(customLinkPlugin)
+    .use(selectionTooltipPlugin).use(blockPlugin)
+    .use(unlockTableListener).use(lockTableListener)
     .use(clipboard)
+    .use(gfm)
+    .use(block)
     .use(upload)
+    .use(codeBlockComponent)
+  // .use(tableBlock) // 表格
+  // .use(listItemBlockComponent) // 列表
 
   editor.create().then(() => {
-    wsProvider.awareness.setLocalStateField('user', {
-      color: `#${randomColor()}`,
-      name: `${userInfo.value.name}`
-    });
     editor.action((ctx) => {
       collabService = ctx.get(collabServiceCtx);
       collabService.bindDoc(doc).setAwareness(wsProvider.awareness).connect();
@@ -175,15 +204,19 @@ onBeforeUnmount(() => {
 <style lang="less" scoped>
 .milkdown-editor-style {
   width: 100%;
+  // height: 40%;
   height: 100%;
-  overflow: hidden;
+  overflow: auto;
   :deep(.milkdown) {
     height: 100%;
     width: 100%;
     .ProseMirror {
       height: 100%;
       width: 100%;
-      // padding: 20px 40px 30px;
+      padding: 20px 40px 30px;
+      a {
+        color: #37618e;
+      }
     }
   }
   :deep(.milkdown-theme-nord) {
@@ -216,13 +249,17 @@ onBeforeUnmount(() => {
     white-space: nowrap;
   }
 }
-:deep(.milkdown-toolbar) {
-  background: #ffffff !important;
-  box-shadow: 0px 4px 20px 0px rgba(0, 0, 0, 0.2) !important;
-  padding: 2px !important;
-}
-:deep(.milkdown-toolbar[data-show='false']) {
-  display: none;
+:deep(.non-editable) {
+  // pointer-events: none;
+  user-select: none !important;
+  background-color: #f3f4f6;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  margin: 10px 0;
+  * {
+    pointer-events: none !important;
+    user-select: none !important;
+  }
 }
 :deep(.custom-ai-style) {
   padding: 10px 20px;

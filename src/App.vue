@@ -2,8 +2,8 @@
 </script>
 
 <template>
-  <!-- <MilkdownEditor /> -->
-  <MilkdownCrepe />
+  <MilkdownEditor />
+  <!-- <MilkdownCrepe /> -->
 </template>
 
 <style>
