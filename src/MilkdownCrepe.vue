@@ -1,5 +1,6 @@
 <script setup>
 import { collab, collabServiceCtx } from "@milkdown/plugin-collab";
+import { LanguageDescription } from '@codemirror/language'
 import { getMarkdown, getHTML } from '@milkdown/utils';
 import { commandsCtx } from "@milkdown/kit/core";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
@@ -10,15 +11,11 @@ import { customLinkPlugin } from './customParser/customLink.js'; // 自定义链
 import { selectionTooltipPlugin } from './customParser/selectAction.js'; // 自定义悬浮插件
 import { underline } from './customParser/customUnderline.js'; // 下划线
 import { video } from './customParser/customVideo'; // 视频
+import { defineFeature } from './customParser/mermaid/index.js';
 import { commonmark, syncHeadingIdPlugin } from "@milkdown/kit/preset/commonmark";
 import { imageBlockComponent } from '@milkdown/kit/component/image-block'
-import { defaultKeymap } from '@codemirror/commands'
-import { basicSetup } from 'codemirror'
-import { oneDark } from '@codemirror/theme-one-dark'
-import { keymap } from '@codemirror/view'
-import { languages } from '@codemirror/language-data'
-import { codeBlockConfig, } from '@milkdown/kit/component/code-block'
 import { upload, uploadConfig } from '@milkdown/kit/plugin/upload';
+import { languages } from '@codemirror/language-data'
 import { Doc } from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { Crepe } from "@milkdown/crepe";
@@ -30,6 +27,15 @@ const editorRoot = ref(null);
 let currCrepe = null;
 let wsProvider = null;
 let collabService = null;
+const myLanguages = [
+  LanguageDescription.of({
+    name: 'Mermaid',
+    alias: ['mermaid', 'graph', 'flow'],
+    load () {
+      return import('@codemirror/lang-javascript').then((m) => m.javascript())
+    }
+  })
+]
 
 const defaultValue = ref('# markdown') // 默认值
 const uploadParams = ref(null) // 上传图片参数
@@ -58,10 +64,15 @@ async function createEditor () {
     features: {
       [Crepe.Feature.Toolbar]: false,
       [Crepe.Feature.Placeholder]: false,
-    }
+    },
+    featureConfigs: {
+      "code-mirror": { languages: [...languages, ...myLanguages], },
+    },
   });
   currCrepe = crepe
   const editor = crepe.editor;
+  editor.remove(syncHeadingIdPlugin)
+
   editor.config(ctx => {
     // 锁定
     ctx.get(listenerCtx).lockTable = () => {
@@ -81,15 +92,6 @@ async function createEditor () {
         });
       });
     };
-    // code 
-    ctx.update(codeBlockConfig.key, (defaultConfig) => ({
-      ...defaultConfig,
-      languages,
-      extensions: [basicSetup, oneDark, keymap.of(defaultKeymap)],
-      renderLanguage: (language, selected) => {
-        return `${language} ${selected ? "✅" : ""}`;
-      },
-    }))
     // 图片上传
     ctx.update(uploadConfig.key, (defaultConfig) => {
       if (!uploadParams.value) return defaultConfig;
@@ -121,7 +123,6 @@ async function createEditor () {
       };
     });
   }).use(listener)
-    .use(commonmark.filter(x => x !== syncHeadingIdPlugin))
     .use(collab)
     .use(imageBlockComponent)
     .use(underline)
@@ -131,6 +132,8 @@ async function createEditor () {
     .use(selectionTooltipPlugin).use(blockPlugin)
     .use(unlockTableListener).use(lockTableListener)
     .use(upload)
+
+  defineFeature(editor) // 添加流程图语法支持
 
   crepe.create().then(ctx => {
     ctx.action((ctx) => {
