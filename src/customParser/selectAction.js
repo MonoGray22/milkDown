@@ -3,7 +3,6 @@ import { Plugin, TextSelection, } from 'prosemirror-state';
 import { TooltipProvider } from '@milkdown/kit/plugin/tooltip'
 
 let currEditorView = null;
-
 function findParent (predicate) {
   return ($pos) => {
     for (let depth = $pos.depth; depth > 0; depth -= 1) {
@@ -63,7 +62,7 @@ const getSelectedNodeType = (state) => {
   return null;
 };
 
-const createTooltipContent = (type, selection) => {
+const createTooltipContent = (type, selection, isHaveLock) => {
   const base = `
     <div class="custom-ai-style" data-label="syntaxCheck">语法检查</div>
     <div class="custom-ai-style" data-label="logicVerification">逻辑验证</div>
@@ -84,6 +83,13 @@ const createTooltipContent = (type, selection) => {
     paragraph: `<div class="custom-ai-style" data-label="lockTable">锁定</div>`,
     table: `<div class="custom-ai-style" data-label="lockTable">锁定</div>`,
     default: base
+  };
+  if (!isHaveLock) {
+    if (map[type].trim()) {
+      return map.default;
+    } else {
+      return '';
+    }
   };
   // 表格单元格非文本
   if (isInTable(selection) && !(selection instanceof TextSelection)) {
@@ -111,7 +117,7 @@ const replaceSelectedText = (editorView, newText) => {
 };
 
 // 创建最简单的选区监听插件
-export const selectionTooltipPlugin = $prose((ctx) => {
+export const selectionTooltipPlugin = (editorId, isHaveLock) => $prose((ctx) => {
   let tooltip = document.createElement('div');
   tooltip.classList = 'milkdown-toolbar'
 
@@ -136,6 +142,7 @@ export const selectionTooltipPlugin = $prose((ctx) => {
       }
       window.parent.postMessage({
         action: 'tooltipClick',
+        roomCode: editorId,
         actionLabel: dataLabel, // 传递点击的文本作为 actionLabel 的值
         selectedText: getSelectedText(currEditorView),
       }, '*');
@@ -143,7 +150,7 @@ export const selectionTooltipPlugin = $prose((ctx) => {
   }
 
   window.addEventListener('message', (event) => {
-    if (event.data.action === 'replaceText') {
+    if (event.data.action === 'replaceText' && event.data.roomCode === editorId) {
       const newText = event.data.newText;
       if (currEditorView && newText) {
         provider.hide()
@@ -170,8 +177,7 @@ export const selectionTooltipPlugin = $prose((ctx) => {
             provider.hide();
             return;
           }
-
-          tooltip.innerHTML = createTooltipContent(type, selection);
+          tooltip.innerHTML = createTooltipContent(type, selection, isHaveLock);
           provider.update(view);
         },
         destroy: provider.destroy,

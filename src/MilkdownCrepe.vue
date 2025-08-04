@@ -1,7 +1,7 @@
 <script setup>
 import { collab, collabServiceCtx } from "@milkdown/plugin-collab";
 import { LanguageDescription } from '@codemirror/language'
-import { getMarkdown, getHTML } from '@milkdown/utils';
+import { getMarkdown, getHTML, insert } from '@milkdown/utils';
 import { commandsCtx } from "@milkdown/kit/core";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { blockPlugin } from './customParser/blockAction.js'; // 自定义块级插件
@@ -11,7 +11,9 @@ import { customLinkPlugin } from './customParser/customLink.js'; // 自定义链
 import { selectionTooltipPlugin } from './customParser/selectAction.js'; // 自定义悬浮插件
 import { underline } from './customParser/customUnderline.js'; // 下划线
 import { video } from './customParser/customVideo'; // 视频
-import { defineFeature } from './customParser/mermaid/index.js';
+import { defineFeature } from './customParser/mermaid/index.js'; // 流程图
+// import './customParser/footnote/index';
+import { remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark"; // 去掉多余 br
 import { commonmark, syncHeadingIdPlugin } from "@milkdown/kit/preset/commonmark";
 import { imageBlockComponent } from '@milkdown/kit/component/image-block'
 import { upload, uploadConfig } from '@milkdown/kit/plugin/upload';
@@ -44,8 +46,10 @@ const websocketParams = ref({ // websocket参数
   url: 'ws://113.57.121.225:8713', // 服务端地址
   room: 'markdown', // 房间号
 })
+const isHaveLock = ref(true); // 是否存在锁定功能
+const isHaveLine = ref(true); // 是否存在协同编辑功能
 
-async function createEditor () {
+async function createEditor (readonly) {
   await wsProvider && wsProvider.disconnect();
   await collabService && collabService.disconnect();
   await currCrepe && currCrepe.destroy(true);
@@ -53,7 +57,6 @@ async function createEditor () {
   const doc = new Doc();
   wsProvider = new WebsocketProvider(websocketParams.value.url, websocketParams.value.room, doc);
   const randomColor = () => Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-
   wsProvider.awareness.setLocalStateField('user', {
     color: `#${randomColor()}`,
     name: `${userInfo.value.name}`
@@ -70,16 +73,17 @@ async function createEditor () {
     },
   });
   currCrepe = crepe
+
   const editor = crepe.editor;
   editor.remove(syncHeadingIdPlugin)
-
+  editor.remove(remarkPreserveEmptyLinePlugin)
   editor.config(ctx => {
     // 锁定
     ctx.get(listenerCtx).lockTable = () => {
       requestAnimationFrame(() => {
         editor.action((ctx) => {
           const commandManager = ctx.get(commandsCtx);
-          commandManager.call(InsertNonEditableCommand.key, userInfo.value.name);
+          commandManager.call(InsertNonEditableCommand.key, userInfo.value.name, websocketParams.value.room);
         });
       });
     };
@@ -88,7 +92,7 @@ async function createEditor () {
       requestAnimationFrame(() => {
         editor.action((ctx) => {
           const commandManager = ctx.get(commandsCtx);
-          commandManager.call(UnwrapNonEditableCommand.key, userInfo.value.name);
+          commandManager.call(UnwrapNonEditableCommand.key, userInfo.value.name, websocketParams.value.room);
         });
       });
     };
@@ -129,55 +133,67 @@ async function createEditor () {
     .use(video)
     .use(nonEditable)
     .use(customLinkPlugin)
-    .use(selectionTooltipPlugin).use(blockPlugin)
+    .use(selectionTooltipPlugin(websocketParams.value.room, isHaveLock.value)).use(blockPlugin)
     .use(unlockTableListener).use(lockTableListener)
     .use(upload)
 
   defineFeature(editor) // 添加流程图语法支持
 
   crepe.create().then(ctx => {
-    ctx.action((ctx) => {
-      collabService = ctx.get(collabServiceCtx);
-      collabService.bindDoc(doc).setAwareness(wsProvider.awareness).connect();
-      wsProvider.once("synced", async (isSynced) => {
-        if (isSynced) {
-          collabService.applyTemplate(defaultValue.value, (remoteNode) => {
-            return !remoteNode || !Boolean(remoteNode.textContent);
-          }).connect();
-        }
-      })
-    });
+    crepe.setReadonly(readonly)
+    if (isHaveLine.value) {
+      ctx.action((ctx) => {
+        collabService = ctx.get(collabServiceCtx);
+        collabService.bindDoc(doc).setAwareness(wsProvider.awareness).connect();
+        wsProvider.once("synced", async (isSynced) => {
+          if (isSynced) {
+            collabService.applyTemplate(defaultValue.value, (remoteNode) => {
+              return !remoteNode || !Boolean(remoteNode.textContent);
+            }).connect();
+          }
+        })
+      });
+    }
   })
 }
 
 function getCurrMarkdown () {
   window.parent.postMessage({
     action: 'getMarkdown',
+    roomCode: websocketParams.value.room,
     html: currCrepe.editor.action(getHTML()),
     markdown: currCrepe.editor.action(getMarkdown())
   }, '*')
 }
 
-// defaultValue(默认值) uploadParams(上传) userInfo(当前编辑用户) websocketParams(ws信息)
+// defaultValue(默认值) uploadParams(上传) userInfo(当前编辑用户) websocketParams(ws信息) readonly(只读)
 function setDefaultDara (propData) {
   console.log(propData)
   defaultValue.value = propData.defaultValue;
   uploadParams.value = propData.uploadParams;
   userInfo.value = propData.userInfo;
+  isHaveLock.value = propData.isHaveLock || true;
+  isHaveLine.value = propData.isHaveLine || true;
   websocketParams.value = propData.websocketParams;
   nextTick(() => {
-    createEditor();
+    createEditor(Boolean(propData.readonly));
   })
 }
 
 function receiveMessage (event) {
   if (event.origin !== window.location.origin) return;
   const { data } = event;
+  // 房间隔离
+  if (websocketParams.value.room !== 'markdown' && data.roomCode === websocketParams.value.room) return;
   if (data.action === 'init') {
     setDefaultDara(data);
   }
+  if (data.roomCode !== websocketParams.value.room) return;
   if (data.action === 'getMarkdown') {
     getCurrMarkdown();
+  }
+  if (data.action === 'insertMarkdown') {
+    currCrepe.editor.action(insert(data.markdownValue, true));
   }
 }
 
@@ -194,7 +210,7 @@ onMounted(() => {
   })
   window.addEventListener('message', receiveMessage);
   window.addEventListener('DOMContentLoaded', () => {
-    window.parent.postMessage({ action: 'ready' }, '*')
+    window.parent.postMessage({ action: 'ready', roomCode: websocketParams.value.room, }, '*')
   })
 })
 onBeforeUnmount(() => {
@@ -218,7 +234,7 @@ onBeforeUnmount(() => {
     .ProseMirror {
       height: 100%;
       width: 100%;
-      padding: 20px 40px 30px;
+      // padding: 20px 40px 30px;
       a {
         color: #37618e;
       }

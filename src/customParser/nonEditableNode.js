@@ -198,7 +198,7 @@ export const nonEditablePlugin = $prose((ctx) => {
 });
 
 // 创建并注册插入命令（使用 $command 工厂）
-export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (user) => {
+export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (user, editorId) => {
   return (state, dispatch) => {
     // 是否存在选中内容
     const { from, to } = state.selection;
@@ -234,6 +234,7 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
     // 锁定内容
     window.parent.postMessage({
       action: 'lockData',
+      roomCode: editorId,
       nodeKey,
       selectedMarkdown: serializer(docNode),
     }, '*')
@@ -244,7 +245,7 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
 },);
 
 // 去掉不可编辑节点
-export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => (user) => {
+export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => (user, editorId) => {
   return (state, dispatch) => {
     const { selection } = state;
     const { from, to } = selection;
@@ -267,6 +268,7 @@ export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => (
       // 解锁内容
       window.parent.postMessage({
         action: 'unlockData',
+        roomCode: editorId,
         nodeKey,
       }, '*')
       let transaction = state.tr.replaceRangeWith(from, to, tableContent.firstChild);

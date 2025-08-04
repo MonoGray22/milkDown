@@ -46,6 +46,7 @@ export const blockPlugin = $prose((ctx) => {
     ctx,
     content: blockDom,
     getOffset: () => 6,
+    getPlacement: () => 'left'
   });
 
   return new Plugin({
