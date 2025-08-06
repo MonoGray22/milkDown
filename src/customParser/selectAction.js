@@ -85,7 +85,7 @@ const createTooltipContent = (type, selection, isHaveLock) => {
     default: base
   };
   if (!isHaveLock) {
-    if (map[type].trim()) {
+    if (map[type] && map[type].trim()) {
       return map.default;
     } else {
       return '';
@@ -121,11 +121,6 @@ export const selectionTooltipPlugin = (editorId, isHaveLock) => $prose((ctx) => 
   let tooltip = document.createElement('div');
   tooltip.classList = 'milkdown-toolbar'
 
-  const provider = new TooltipProvider({
-    content: tooltip,
-    offset: 10
-  });
-
   tooltip.onmousedown = (e) => {
     e.preventDefault()
   }
@@ -157,6 +152,11 @@ export const selectionTooltipPlugin = (editorId, isHaveLock) => $prose((ctx) => 
         replaceSelectedText(currEditorView, newText);
       }
     }
+  });
+
+  const provider = new TooltipProvider({
+    content: tooltip,
+    offset: 10
   });
 
   return new Plugin({

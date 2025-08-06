@@ -198,7 +198,7 @@ export const nonEditablePlugin = $prose((ctx) => {
 });
 
 // 创建并注册插入命令（使用 $command 工厂）
-export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (user, editorId) => {
+export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => ({ user, editorId }) => {
   return (state, dispatch) => {
     // 是否存在选中内容
     const { from, to } = state.selection;
@@ -245,7 +245,7 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
 },);
 
 // 去掉不可编辑节点
-export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => (user, editorId) => {
+export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => ({ user, editorId }) => {
   return (state, dispatch) => {
     const { selection } = state;
     const { from, to } = selection;
@@ -260,6 +260,7 @@ export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => (
       if (lockUser && lockUser !== user) {
         window.parent.postMessage({
           action: 'throwError',
+          roomCode: editorId,
           error: `此内容已锁定，如需编辑，请联系${lockUser}`
         }, '*')
         return false;

@@ -1,8 +1,8 @@
 <script setup>
 import { collab, collabServiceCtx } from "@milkdown/plugin-collab";
 import { LanguageDescription } from '@codemirror/language'
-import { getMarkdown, getHTML, insert } from '@milkdown/utils';
-import { commandsCtx } from "@milkdown/kit/core";
+import { getMarkdown, getHTML, insert, replaceAll } from '@milkdown/utils';
+import { commandsCtx, defaultValueCtx } from "@milkdown/kit/core";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { blockPlugin } from './customParser/blockAction.js'; // 自定义块级插件
 import { lockTableListener, unlockTableListener } from './customParser/listener.js'; // 自定义监听插件
@@ -83,7 +83,7 @@ async function createEditor (readonly) {
       requestAnimationFrame(() => {
         editor.action((ctx) => {
           const commandManager = ctx.get(commandsCtx);
-          commandManager.call(InsertNonEditableCommand.key, userInfo.value.name, websocketParams.value.room);
+          commandManager.call(InsertNonEditableCommand.key, { user: userInfo.value.name, editorId: websocketParams.value.room });
         });
       });
     };
@@ -92,7 +92,7 @@ async function createEditor (readonly) {
       requestAnimationFrame(() => {
         editor.action((ctx) => {
           const commandManager = ctx.get(commandsCtx);
-          commandManager.call(UnwrapNonEditableCommand.key, userInfo.value.name, websocketParams.value.room);
+          commandManager.call(UnwrapNonEditableCommand.key, { user: userInfo.value.name, editorId: websocketParams.value.room });
         });
       });
     };
@@ -132,8 +132,9 @@ async function createEditor (readonly) {
     .use(underline)
     .use(video)
     .use(nonEditable)
+    .use(blockPlugin)
     .use(customLinkPlugin)
-    .use(selectionTooltipPlugin(websocketParams.value.room, isHaveLock.value)).use(blockPlugin)
+    .use(selectionTooltipPlugin(websocketParams.value.room, isHaveLock.value))
     .use(unlockTableListener).use(lockTableListener)
     .use(upload)
 
@@ -153,6 +154,8 @@ async function createEditor (readonly) {
           }
         })
       });
+    } else {
+      currCrepe.editor.action(replaceAll(defaultValue.value, true));
     }
   })
 }
@@ -172,8 +175,8 @@ function setDefaultDara (propData) {
   defaultValue.value = propData.defaultValue;
   uploadParams.value = propData.uploadParams;
   userInfo.value = propData.userInfo;
-  isHaveLock.value = propData.isHaveLock || true;
-  isHaveLine.value = propData.isHaveLine || true;
+  isHaveLock.value = propData.hasOwnProperty('isHaveLock') ? propData.isHaveLock : true;
+  isHaveLine.value = propData.hasOwnProperty('isHaveLine') ? propData.isHaveLine : true;
   websocketParams.value = propData.websocketParams;
   nextTick(() => {
     createEditor(Boolean(propData.readonly));
@@ -184,7 +187,7 @@ function receiveMessage (event) {
   if (event.origin !== window.location.origin) return;
   const { data } = event;
   // 房间隔离
-  if (websocketParams.value.room !== 'markdown' && data.roomCode === websocketParams.value.room) return;
+  if (websocketParams.value.room !== 'markdown' && data.roomCode !== websocketParams.value.room) return;
   if (data.action === 'init') {
     setDefaultDara(data);
   }
@@ -234,7 +237,7 @@ onBeforeUnmount(() => {
     .ProseMirror {
       height: 100%;
       width: 100%;
-      // padding: 20px 40px 30px;
+      padding: 50px 40px 50px 84px;
       a {
         color: #37618e;
       }
