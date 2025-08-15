@@ -4,16 +4,16 @@ import { LanguageDescription } from '@codemirror/language'
 import { getMarkdown, getHTML, insert, replaceAll } from '@milkdown/utils';
 import { commandsCtx, defaultValueCtx } from "@milkdown/kit/core";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
-import { blockPlugin } from './customParser/blockAction.js'; // 自定义块级插件
-import { lockTableListener, unlockTableListener } from './customParser/listener.js'; // 自定义监听插件
-import { nonEditable, InsertNonEditableCommand, UnwrapNonEditableCommand } from './customParser/nonEditableNode.js'; // 不可编辑节点
-import { customLinkPlugin } from './customParser/customLink.js'; // 自定义链接
-import { selectionTooltipPlugin } from './customParser/selectAction.js'; // 自定义悬浮插件
-import { underline } from './customParser/customUnderline.js'; // 下划线
-import { video } from './customParser/customVideo'; // 视频
-import { defineFeature } from './customParser/mermaid/index.js'; // 流程图
-// import './customParser/footnote/index';
-import { remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark"; // 去掉多余 br
+import { blockPlugin } from './customParser/blockAction.js';
+import { block } from '@milkdown/plugin-block'
+import { lockTableListener, unlockTableListener, updateLockListener } from './customParser/listener.js';
+import { nonEditable, InsertNonEditableCommand, UnwrapNonEditableCommand, UpdateNonEditableCommand } from './customParser/nonEditableNode.js';
+import { customLinkPlugin } from './customParser/customLink.js';
+import { selectionTooltipPlugin } from './customParser/selectAction.js';
+import { underline } from './customParser/customUnderline.js';
+import { video } from './customParser/customVideo';
+import { defineFeature } from './customParser/mermaid/index.js';
+import { remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
 import { commonmark, syncHeadingIdPlugin } from "@milkdown/kit/preset/commonmark";
 import { imageBlockComponent } from '@milkdown/kit/component/image-block'
 import { upload, uploadConfig } from '@milkdown/kit/plugin/upload';
@@ -25,65 +25,59 @@ import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame.css";
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 
+// -------------------- 基本状态 --------------------
 const editorRoot = ref(null);
 let currCrepe = null;
 let wsProvider = null;
 let collabService = null;
+
 const myLanguages = [
   LanguageDescription.of({
     name: 'Mermaid',
     alias: ['mermaid', 'graph', 'flow'],
-    load () {
-      return import('@codemirror/lang-javascript').then((m) => m.javascript())
-    }
+    load: () => import('@codemirror/lang-javascript').then((m) => m.javascript())
   })
-]
+];
 
-const defaultValue = ref('# markdown') // 默认值
-const uploadParams = ref(null) // 上传图片参数
-const userInfo = ref({ name: '用户' }) // 用户信息
-const websocketParams = ref({ // websocket参数
-  url: 'ws://113.57.121.225:8713', // 服务端地址
-  room: 'markdown', // 房间号
-})
-const isHaveLock = ref(true); // 是否存在锁定功能
-const isHaveLine = ref(true); // 是否存在协同编辑功能
+const defaultValue = ref('# markdown');
+const uploadParams = ref(null);
+const userInfo = ref({ name: '用户' });
+const websocketParams = ref({ url: 'ws://113.57.121.225:8713', room: 'markdown' });
+const isHaveLock = ref(true);
+const isHaveLine = ref(true);
 
-async function createEditor (readonly) {
-  await wsProvider && wsProvider.disconnect();
-  await collabService && collabService.disconnect();
-  await currCrepe && currCrepe.destroy(true);
+const doc = new Doc();
+const randomColor = () => Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
 
-  const doc = new Doc();
-  wsProvider = new WebsocketProvider(websocketParams.value.url, websocketParams.value.room, doc);
-  const randomColor = () => Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-  wsProvider.awareness.setLocalStateField('user', {
-    color: `#${randomColor()}`,
-    name: `${userInfo.value.name}`
-  });
-
+// -------------------- 编辑器创建 --------------------
+function createEditor (callback) {
   const crepe = new Crepe({
     root: editorRoot.value,
     features: {
       [Crepe.Feature.Toolbar]: false,
       [Crepe.Feature.Placeholder]: false,
+      [Crepe.Feature.BlockEdit]: false
     },
     featureConfigs: {
-      "code-mirror": { languages: [...languages, ...myLanguages], },
+      "code-mirror": { languages: [...languages, ...myLanguages] }
     },
   });
-  currCrepe = crepe
+  currCrepe = crepe;
 
   const editor = crepe.editor;
-  editor.remove(syncHeadingIdPlugin)
-  editor.remove(remarkPreserveEmptyLinePlugin)
-  editor.config(ctx => {
+  editor.remove(syncHeadingIdPlugin);
+  editor.remove(remarkPreserveEmptyLinePlugin);
+
+  // 监听器注册
+  editor.config((ctx) => {
     // 锁定
     ctx.get(listenerCtx).lockTable = () => {
       requestAnimationFrame(() => {
         editor.action((ctx) => {
-          const commandManager = ctx.get(commandsCtx);
-          commandManager.call(InsertNonEditableCommand.key, { user: userInfo.value.name, editorId: websocketParams.value.room });
+          ctx.get(commandsCtx).call(InsertNonEditableCommand.key, {
+            user: userInfo.value.name,
+            editorId: websocketParams.value.room
+          });
         });
       });
     };
@@ -91,8 +85,23 @@ async function createEditor (readonly) {
     ctx.get(listenerCtx).unlockTable = () => {
       requestAnimationFrame(() => {
         editor.action((ctx) => {
-          const commandManager = ctx.get(commandsCtx);
-          commandManager.call(UnwrapNonEditableCommand.key, { user: userInfo.value.name, editorId: websocketParams.value.room });
+          ctx.get(commandsCtx).call(UnwrapNonEditableCommand.key, {
+            user: userInfo.value.name,
+            editorId: websocketParams.value.room
+          });
+        });
+      });
+    };
+    // 更新锁定属性
+    ctx.get(listenerCtx).updateLock = (params = {}) => {
+      requestAnimationFrame(() => {
+        editor.action((ctx) => {
+          ctx.get(commandsCtx).call(UpdateNonEditableCommand.key, {
+            user: userInfo.value.name,
+            editorId: websocketParams.value.room,
+            attrs: { nodeType: params.dataLabel },
+            markdownContent: params.markdownContent
+          });
         });
       });
     };
@@ -101,124 +110,150 @@ async function createEditor (readonly) {
       if (!uploadParams.value) return defaultConfig;
       return {
         ...defaultConfig,
-        // uploadWidgetFactory: () => {
-        //   return '<span>正在上传中...</span'
-        // },
         uploader: async (file, schema) => {
           const { url, config, imagePrefix } = uploadParams.value;
-          let formdata = new FormData();
-          formdata.append('image', file[0]);
+          const imgFile = Array.isArray(file) ? file[0] : file;
+          const formdata = new FormData();
+          formdata.append('image', imgFile);
           try {
-            let res = await fetch(url, {
+            const res = await fetch(url, {
               method: 'POST',
               mode: 'cors',
-              headers: {
-                'Accept': 'application/json',
-                ...config.headers
-              },
+              headers: { 'Accept': 'application/json', ...config.headers },
               body: formdata
             });
             const json = await res.json();
-            return [schema.nodes.image.createAndFill({ src: imagePrefix + json.url })]
-          } catch (error) {
-            return []
+            return [schema.nodes.image.createAndFill({ src: imagePrefix + json.url })];
+          } catch {
+            return [];
           }
         }
       };
     });
-  }).use(listener)
+  })
+    .use(listener)
     .use(collab)
     .use(imageBlockComponent)
     .use(underline)
     .use(video)
     .use(nonEditable)
-    .use(blockPlugin)
     .use(customLinkPlugin)
-    .use(selectionTooltipPlugin(websocketParams.value.room, isHaveLock.value))
-    .use(unlockTableListener).use(lockTableListener)
-    .use(upload)
+    .use(block)
+    .use(blockPlugin)
+    .use(commonmark)
+    .use(selectionTooltipPlugin(() => websocketParams.value.room, () => isHaveLock.value))
+    .use(unlockTableListener)
+    .use(lockTableListener)
+    .use(updateLockListener)
+    .use(upload);
 
-  defineFeature(editor) // 添加流程图语法支持
+  // 添加流程图支持
+  defineFeature(editor);
 
-  crepe.create().then(ctx => {
-    crepe.setReadonly(readonly)
-    if (isHaveLine.value) {
-      ctx.action((ctx) => {
-        collabService = ctx.get(collabServiceCtx);
-        collabService.bindDoc(doc).setAwareness(wsProvider.awareness).connect();
-        wsProvider.once("synced", async (isSynced) => {
-          if (isSynced) {
-            collabService.applyTemplate(defaultValue.value, (remoteNode) => {
-              return !remoteNode || !Boolean(remoteNode.textContent);
-            }).connect();
-          }
-        })
-      });
-    } else {
-      currCrepe.editor.action(replaceAll(defaultValue.value, true));
-    }
-  })
+  currCrepe.create().then(() => {
+    callback?.();
+  });
 }
 
+// -------------------- 工具方法 --------------------
 function getCurrMarkdown () {
+  if (!currCrepe) return;
   window.parent.postMessage({
     action: 'getMarkdown',
     roomCode: websocketParams.value.room,
     html: currCrepe.editor.action(getHTML()),
     markdown: currCrepe.editor.action(getMarkdown())
-  }, '*')
+  }, '*');
 }
 
-// defaultValue(默认值) uploadParams(上传) userInfo(当前编辑用户) websocketParams(ws信息) readonly(只读)
-function setDefaultDara (propData) {
-  console.log(propData)
+function setDefaultData (propData) {
   defaultValue.value = propData.defaultValue;
   uploadParams.value = propData.uploadParams;
   userInfo.value = propData.userInfo;
-  isHaveLock.value = propData.hasOwnProperty('isHaveLock') ? propData.isHaveLock : true;
-  isHaveLine.value = propData.hasOwnProperty('isHaveLine') ? propData.isHaveLine : true;
+  isHaveLock.value = propData.isHaveLock ?? true;
+  isHaveLine.value = propData.isHaveLine ?? true;
   websocketParams.value = propData.websocketParams;
-  nextTick(() => {
-    createEditor(Boolean(propData.readonly));
-  })
+
+  nextTick(() => setMarkdownValue(Boolean(propData.readonly)));
 }
 
+// 设置编辑器内容并初始化协同
+async function setMarkdownValue (readonly) {
+  if (wsProvider) wsProvider.disconnect();
+  if (collabService) collabService.disconnect();
+
+  if (!currCrepe) return;
+
+  currCrepe.setReadonly(readonly);
+  if (isHaveLine.value) {
+    wsProvider = new WebsocketProvider(websocketParams.value.url, websocketParams.value.room, doc);
+    wsProvider.awareness.setLocalStateField('user', {
+      color: `#${randomColor()}`,
+      name: `${userInfo.value.name}`
+    });
+    currCrepe.editor.action((ctx) => {
+      collabService = ctx.get(collabServiceCtx);
+      collabService.bindDoc(doc).setAwareness(wsProvider.awareness).connect();
+      wsProvider.once("synced", (isSynced) => {
+        if (isSynced) {
+          collabService.applyTemplate(defaultValue.value, (remoteNode) => {
+            return !remoteNode || !Boolean(remoteNode.textContent);
+          }).connect();
+        }
+      });
+    });
+  } else {
+    currCrepe.editor.action(replaceAll(defaultValue.value, true));
+  }
+}
+
+// -------------------- 消息通信 --------------------
 function receiveMessage (event) {
   if (event.origin !== window.location.origin) return;
+
   const { data } = event;
-  // 房间隔离
-  if (websocketParams.value.room !== 'markdown' && data.roomCode !== websocketParams.value.room) return;
+
+  // 初始化
   if (data.action === 'init') {
-    setDefaultDara(data);
+    setDefaultData(data);
+    return;
   }
+
+  // 非当前房间的消息忽略
   if (data.roomCode !== websocketParams.value.room) return;
+
   if (data.action === 'getMarkdown') {
     getCurrMarkdown();
   }
   if (data.action === 'insertMarkdown') {
+    if (!currCrepe) return;
     currCrepe.editor.action(insert(data.markdownValue, true));
   }
 }
 
+// -------------------- 清理 --------------------
 function clearData () {
-  wsProvider && wsProvider.disconnect();
-  collabService && collabService.disconnect();
-  currCrepe && currCrepe.destroy(true);
+  if (wsProvider) wsProvider.disconnect();
+  if (collabService) collabService.disconnect();
+  if (currCrepe) currCrepe.destroy(true);
   window.removeEventListener('message', receiveMessage);
 }
 
+// -------------------- 生命周期 --------------------
 onMounted(() => {
   nextTick(() => {
-    createEditor();
-  })
-  window.addEventListener('message', receiveMessage);
-  window.addEventListener('DOMContentLoaded', () => {
-    window.parent.postMessage({ action: 'ready', roomCode: websocketParams.value.room, }, '*')
-  })
-})
-onBeforeUnmount(() => {
-  clearData();
-})
+    createEditor(() => {
+      window.addEventListener('message', receiveMessage);
+      // 直接 ready
+      window.parent.postMessage({
+        action: 'ready',
+        roomCode: websocketParams.value.room
+      }, '*');
+    });
+  });
+});
+
+onBeforeUnmount(clearData);
 </script>
 
 <template>
@@ -237,7 +272,7 @@ onBeforeUnmount(() => {
     .ProseMirror {
       height: 100%;
       width: 100%;
-      padding: 50px 40px 50px 84px;
+      padding: 50px 40px;
       a {
         color: #37618e;
       }
@@ -274,9 +309,8 @@ onBeforeUnmount(() => {
   }
 }
 :deep(.non-editable) {
-  // pointer-events: none;
   user-select: none !important;
-  background-color: #f3f4f6;
+  background-color: var(--bg-draft);
   padding: 0.75rem;
   border-radius: 0.375rem;
   margin: 10px 0;
@@ -284,6 +318,18 @@ onBeforeUnmount(() => {
     pointer-events: none !important;
     user-select: none !important;
   }
+}
+:deep(.non-editable-optimize) {
+  background-color: var(--bg-optimizing);
+  // background-color: rgba(66, 133, 244, 0.2);
+}
+:deep(.non-editable-verify) {
+  background-color: var(--bg-confirmed);
+  // background-color: rgba(15, 157, 88, 0.2);
+}
+:deep(.non-editable-import) {
+  background-color: var(--bg-imported);
+  // background-color: rgba(123, 31, 162, 0.2);
 }
 :deep(.custom-ai-style) {
   padding: 10px 20px;
@@ -293,5 +339,44 @@ onBeforeUnmount(() => {
   &:hover {
     background-color: #f0f0f0;
   }
+}
+:deep(.custom-toolbar) {
+  overflow: visible;
+}
+:deep(.custom-ai-style-wrapper) {
+  position: relative;
+  display: inline-block;
+  margin: 0 4px;
+  .custom-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    font-size: 14px;
+    // min-width: 60px;
+    background-color: white;
+    border: 1px solid #ccc;
+    z-index: 1000;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    border-radius: 0 0 8px 8px;
+  }
+  .dropdown-item {
+    padding: 4px 0;
+    text-align: center;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .dropdown-item:hover {
+    background-color: #f0f0f0;
+  }
+  &:hover {
+    .custom-dropdown {
+      display: block;
+    }
+  }
+}
+:deep(.custom-block-handle) {
+  top: 0;
 }
 </style>
