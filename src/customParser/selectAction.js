@@ -5,31 +5,31 @@ import { TooltipProvider } from '@milkdown/kit/plugin/tooltip';
 
 // ====== 配置区 ======
 const AI_ACTIONS = [
-  { key: 'syntaxCheck', label: '语法检查' },
-  { key: 'logicVerification', label: '逻辑验证' },
-  { key: 'sumUp', label: '总结' },
-  { key: 'expandOn', label: '扩写' },
-  { key: 'abbreviate', label: '缩写' },
+  { key: 'syntaxCheck', label: '语法检查', icon: 'yufajiancha' },
+  { key: 'logicVerification', label: '逻辑验证', icon: 'luojiyanzheng' },
+  { key: 'sumUp', label: '总结', icon: 'zongjie' },
+  { key: 'expandOn', label: '扩写', icon: 'kuoxie' },
+  { key: 'abbreviate', label: '缩写', icon: 'suoxie' },
 ];
 const LOCK_ACTION = {
   // 草拟
   draft: [
-    { key: 'optimize', label: '流转至优化中' },
-    { key: 'unlockTable', label: '解锁' }
+    { key: 'optimize', label: '流转至优化中', icon: 'liuzhuan' },
+    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' }
   ],
   // 优化中
   optimize: [
-    { key: 'reviseRewrite', label: '润色改写' },
-    { key: 'verify', label: '流转至已确认' },
-    { key: 'unlockTable', label: '解锁' }
+    { key: 'reviseRewrite', label: '润色改写', icon: 'runsegaixie' },
+    { key: 'verify', label: '流转至已确认', icon: 'liuzhuan' },
+    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' }
   ],
   // 已确认
   verify: [
-    { key: 'import', label: '导入' },
-    { key: 'unlockTable', label: '解锁' }
+    { key: 'import', label: '导入', icon: 'liuzhuan' },
+    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' }
   ],
   import: [
-    { key: 'unlockTable', label: '解锁' }
+    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' }
   ]
 };
 
@@ -50,10 +50,10 @@ const NODE_ACTION_MAP = {
 };
 
 // ====== 工具函数 ======
-function createDropdownItem ({ key, label }) {
+function createDropdownItem ({ key, label, icon }) {
   return `
     <div class="custom-ai-style-wrapper">
-      <div class="custom-ai-style" data-label="${key}">${label}</div>
+      <div class="custom-ai-style" data-label="${key}"><i class="iconfont icon-${icon}" style="pointer-events: none;"></i> ${label}</div>
       <div class="custom-dropdown">
         <div class="dropdown-item" data-label="${key}-simple">简单</div>
         <div class="dropdown-item" data-label="${key}-full">完整</div>
@@ -62,8 +62,9 @@ function createDropdownItem ({ key, label }) {
   `;
 }
 
-function singleAction (key, label) {
-  return `<div class="custom-ai-style" data-label="${key}">${label}</div>`;
+function singleAction (key, label, icon = 'suoding') {
+  return `<div class="custom-ai-style" data-label="${key}">
+  <i class="iconfont icon-${icon}" style="pointer-events: none;"></i> ${label}</div>`;
 }
 
 function findParent (predicate) {
@@ -157,7 +158,7 @@ function createTooltipContent (type, selection, isHaveLock) {
   if (['nonEditable'].includes(type)) {
     const { nodeType = 'draft' } = selection.node.attrs;
     const list = LOCK_ACTION[nodeType] || LOCK_ACTION.draft;
-    return list.map(({ key, label }) => singleAction(key, label)).join('');
+    return list.map(({ key, label, icon }) => singleAction(key, label, icon || '')).join('');
   }
   return NODE_ACTION_MAP[type] || ' ';
 }

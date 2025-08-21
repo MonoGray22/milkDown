@@ -309,8 +309,8 @@ onBeforeUnmount(clearData);
   }
 }
 :deep(.non-editable) {
+  position: relative;
   user-select: none !important;
-  background-color: var(--bg-draft);
   padding: 0.75rem;
   border-radius: 0.375rem;
   margin: 10px 0;
@@ -318,18 +318,48 @@ onBeforeUnmount(clearData);
     pointer-events: none !important;
     user-select: none !important;
   }
+  &:after {
+    position: absolute;
+    visibility: hidden;
+    padding: 4px;
+    border-radius: 4px;
+  }
+  &:hover {
+    &:after {
+      visibility: visible;
+      top: -36px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+  }
+}
+:deep(.non-editable-draft) {
+  background-color: var(--bg-draft);
+  &:after {
+    content: '当前状态：草拟';
+    background-color: var(--bg-draft);
+  }
 }
 :deep(.non-editable-optimize) {
   background-color: var(--bg-optimizing);
-  // background-color: rgba(66, 133, 244, 0.2);
+  &:after {
+    content: '当前状态：优化中';
+    background-color: var(--bg-optimizing);
+  }
 }
 :deep(.non-editable-verify) {
   background-color: var(--bg-confirmed);
-  // background-color: rgba(15, 157, 88, 0.2);
+  &:after {
+    content: '当前状态：已确认';
+    background-color: var(--bg-confirmed);
+  }
 }
 :deep(.non-editable-import) {
   background-color: var(--bg-imported);
-  // background-color: rgba(123, 31, 162, 0.2);
+  &:after {
+    content: '当前状态：已导入';
+    background-color: var(--bg-imported);
+  }
 }
 :deep(.custom-ai-style) {
   padding: 10px 20px;
