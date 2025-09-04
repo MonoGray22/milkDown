@@ -1,4 +1,5 @@
 import { $node, $command, $prose } from '@milkdown/utils';
+import { NodeSelection } from 'prosemirror-state';
 import { parserCtx, schemaCtx, serializerCtx } from '@milkdown/core';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 
@@ -10,16 +11,24 @@ export const nonEditableNode = $node('nonEditable', () => ({
   selectable: true,
   draggable: false,
   attrs: {
+    nodeType: { default: null },
     user: { default: null },
     key: { default: null },
-    nodeType: { default: null }
+    sourceId: { default: null }, // 外部系统记录主键
+    sourceType: { default: null }, // 外部系统记录类型
   },
   parseDOM: [
     {
       tag: 'div[data-type="non-editable"]',
       getAttrs: (dom) => {
         if (dom instanceof HTMLElement) {
-          return { user: dom.getAttribute('data-user'), key: dom.getAttribute('data-key') };
+          return {
+            nodeType: dom.getAttribute('data-nodeType'),
+            user: dom.getAttribute('data-user'),
+            key: dom.getAttribute('data-key'),
+            sourceId: dom.getAttribute('data-source-id'),
+            sourceType: dom.getAttribute('data-source-type')
+          };
         }
       },
     }
@@ -27,6 +36,16 @@ export const nonEditableNode = $node('nonEditable', () => ({
   toDOM: (node) => {
     const classes = ['non-editable'];
     if (node.attrs.nodeType) classes.push(`non-editable-${node.attrs.nodeType}`);
+    let childrenNode = [];
+    if (node.attrs.sourceId) {
+      childrenNode.push(['button', {
+        class: 'non-editable-link-btn',
+        type: 'button',
+        title: '查看引用对象',
+        'aria-label': '查看引用对象'
+      }, '']);
+    };
+    childrenNode.push(['div', { class: 'non-editable-inner', contentEditable: 'false', }, 0]);
     return [
       'div',
       {
@@ -34,11 +53,11 @@ export const nonEditableNode = $node('nonEditable', () => ({
         'data-user': node.attrs.user,
         'data-key': node.attrs.key,
         'data-nodeType': node.attrs.nodeType,
+        'data-source-id': node.attrs.sourceId,
+        'data-source-type': node.attrs.sourceType,
         class: classes.join(' '),
-        contentEditable: 'false',
         tabindex: '-1',
-      },
-      0,
+      }, ...childrenNode
     ]
   },
   parseMarkdown: {
@@ -58,8 +77,9 @@ export const nonEditableNode = $node('nonEditable', () => ({
 }));
 
 // 创建阻止编辑的插件
-export const nonEditablePlugin = $prose((ctx) => {
+export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
   const pluginKey = new PluginKey('nonEditablePlugin');
+  const editorId = typeof editorIdOrGetter === 'function' ? editorIdOrGetter() : editorIdOrGetter;
   return new Plugin({
     key: pluginKey,
     props: {
@@ -121,6 +141,30 @@ export const nonEditablePlugin = $prose((ctx) => {
         return false;
       },
       handleDOMEvents: {
+        click (view, event) {
+          const target = event.target;
+          if (target instanceof HTMLElement && target.closest('.non-editable-link-btn')) {
+            event.preventDefault();
+            const btn = target.closest('.non-editable-link-btn')
+            const box = btn.closest('[data-type="non-editable"]')
+            window.parent.postMessage({
+              action: 'linkedIconClick',
+              roomCode: editorId,
+              sourceId: box.getAttribute('data-source-id'),
+              sourceType: box.getAttribute('data-source-type'),
+            }, '*');
+            return true;
+          }
+          return false;
+        },
+        mousedown (view, event) {
+          const target = event.target;
+          if (target instanceof HTMLElement && target.closest('.non-editable-link-btn')) {
+            event.preventDefault();
+            return true;
+          }
+          return false;
+        },
         dragstart (view, event) {
           const target = event.target;
           if (target instanceof HTMLElement && target.closest('[data-type="non-editable"]')) {
@@ -135,30 +179,99 @@ export const nonEditablePlugin = $prose((ctx) => {
 });
 
 // 创建并注册插入命令（使用 $command 工厂）
-export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => ({ user, editorId }) => {
+export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => ({ user, editorId, markdownContent, attrs = {} }) => {
   return (state, dispatch) => {
     // 是否存在选中内容
     const { from, to } = state.selection;
-    if (from === to) return false;
 
     const schema = ctx.get(schemaCtx);
+    const parser = ctx.get(parserCtx);
+    const serializer = ctx.get(serializerCtx);
+
     const nodeType = schema.nodes['nonEditable'];
     const listNode = schema.nodes['bullet_list'];
     if (!nodeType) return false;
 
     const nodeKey = new Date().getTime() + Math.random().toString(36).substring(2, 15);
+
+    if (markdownContent) {
+      let content;
+      try {
+        const docNode = parser(markdownContent);
+        content = docNode.content;
+      } catch (err) {
+        console.error('Markdown 解析失败:', err);
+        return false;
+      }
+      const wrappedNode = nodeType.create(
+        { user, key: nodeKey, nodeType: attrs.nodeType ?? 'draft', ...attrs },
+        content
+      );
+      if (!wrappedNode) return false;
+
+      const docForSerialize = schema.nodes.doc.create(null, wrappedNode.content);
+      window.parent.postMessage({
+        action: 'lockData',
+        roomCode: editorId,
+        nodeKey,
+        selectedMarkdown: serializer(docForSerialize),
+        infoParams: attrs
+      }, '*');
+      // const tr = state.tr.insert(from, wrappedNode);
+      // tr.setSelection(TextSelection.create(tr.doc, from + wrappedNode.nodeSize)); // 光标放到节点后
+
+      const tr = state.tr;
+      // 插入位置上一节点和后一节点是否为nonEditable
+      const prevNode = state.doc.resolve(from).nodeBefore;
+      const nextNode = state.doc.resolve(from).nodeAfter;
+
+      if (state.selection instanceof NodeSelection) {
+        const pos = state.selection.$to.pos;
+        tr.insert(pos, wrappedNode);
+        tr.setSelection(TextSelection.create(tr.doc, pos + wrappedNode.nodeSize));
+      } else {
+        const $from = state.selection.$from;
+        const isEmptyPara = $from.parent.type.name === 'paragraph' && $from.parent.childCount === 0;
+        const safeBefore = $from.depth > 0 ? $from.before() : 0;
+        const safeAfter = $from.depth > 0 ? $from.after() : state.doc.content.size;
+
+        if (prevNode?.type?.name === 'nonEditable' && nextNode?.type?.name === 'nonEditable') {
+          if (isEmptyPara) {
+            // 中间是空段 -> 直接替换该段
+            tr.replaceRangeWith(blockStart, blockEnd, wrappedNode);
+            tr.setSelection(TextSelection.create(tr.doc, blockStart + wrappedNode.nodeSize));
+          } else {
+            // 边界处 -> 直接在 from 处插入
+            tr.insert(from, wrappedNode);
+            tr.setSelection(TextSelection.create(tr.doc, from + wrappedNode.nodeSize));
+          }
+        } else if (isEmptyPara) {
+          tr.replaceRangeWith(safeBefore, safeAfter, wrappedNode);
+          tr.setSelection(TextSelection.create(tr.doc, safeBefore + wrappedNode.nodeSize));
+        } else if ($from.parentOffset === 0) {
+          tr.insert(safeBefore, wrappedNode);
+          tr.setSelection(TextSelection.create(tr.doc, safeBefore + wrappedNode.nodeSize));
+        } else {
+          // 其它：统一插到段落之后
+          tr.insert(safeAfter, wrappedNode);
+          tr.setSelection(TextSelection.create(tr.doc, safeAfter + wrappedNode.nodeSize));
+        }
+      }
+
+      dispatch?.(tr);
+      return true;
+    }
+    if (from === to) return false;
+
     let wrappedContent = null;
 
     const slice = state.doc.slice(from, to);
     const fragment = slice.content;
-    wrappedContent = fragment.childCount === 1
-      ? [fragment.firstChild]
-      : fragment.content;
+    wrappedContent = fragment.childCount === 1 ? [fragment.firstChild] : fragment.content;
 
     // === 检测是否选中列表节点 ===
-    const isLisNode = wrappedContent.some(el => el.type.name === 'list_item');
-
-    if (isLisNode) {
+    const isLiNode = wrappedContent.some(el => el.type.name === 'list_item');
+    if (isLiNode) {
       wrappedContent = listNode.create({}, wrappedContent);
     }
 
@@ -166,10 +279,8 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
       { user, key: nodeKey, nodeType: 'draft' },
       wrappedContent
     );
-
     if (!wrappedNode) return false;
 
-    const serializer = ctx.get(serializerCtx);
     const docNode = schema.nodes.doc.create(null, wrappedNode.content);
 
     // 锁定内容
@@ -292,4 +403,4 @@ export const UpdateNonEditableCommand = $command('UpdateNonEditable', (ctx) => (
   };
 });
 
-export const nonEditable = [nonEditableNode, nonEditablePlugin, InsertNonEditableCommand, UnwrapNonEditableCommand, UpdateNonEditableCommand];
+export const nonEditable = [nonEditableNode, InsertNonEditableCommand, UnwrapNonEditableCommand, UpdateNonEditableCommand];

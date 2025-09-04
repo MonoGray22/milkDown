@@ -7,7 +7,7 @@ import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { blockPlugin } from './customParser/blockAction.js';
 import { block } from '@milkdown/plugin-block'
 import { lockTableListener, unlockTableListener, updateLockListener } from './customParser/listener.js';
-import { nonEditable, InsertNonEditableCommand, UnwrapNonEditableCommand, UpdateNonEditableCommand } from './customParser/nonEditableNode.js';
+import { nonEditable, nonEditablePlugin, InsertNonEditableCommand, UnwrapNonEditableCommand, UpdateNonEditableCommand } from './customParser/nonEditableNode.js';
 import { customLinkPlugin } from './customParser/customLink.js';
 import { selectionTooltipPlugin } from './customParser/selectAction.js';
 import { underline } from './customParser/customUnderline.js';
@@ -65,8 +65,6 @@ function createEditor (callback) {
   currCrepe = crepe;
 
   const editor = crepe.editor;
-  editor.remove(syncHeadingIdPlugin);
-  editor.remove(remarkPreserveEmptyLinePlugin);
 
   // 监听器注册
   editor.config((ctx) => {
@@ -76,7 +74,7 @@ function createEditor (callback) {
         editor.action((ctx) => {
           ctx.get(commandsCtx).call(InsertNonEditableCommand.key, {
             user: userInfo.value.name,
-            editorId: websocketParams.value.room
+            editorId: websocketParams.value.room,
           });
         });
       });
@@ -136,6 +134,7 @@ function createEditor (callback) {
     .use(imageBlockComponent)
     .use(underline)
     .use(video)
+    .use(nonEditablePlugin(() => websocketParams.value.room))
     .use(nonEditable)
     .use(customLinkPlugin)
     .use(block)
@@ -149,6 +148,9 @@ function createEditor (callback) {
 
   // 添加流程图支持
   defineFeature(editor);
+
+  editor.remove(syncHeadingIdPlugin);
+  editor.remove(remarkPreserveEmptyLinePlugin);
 
   currCrepe.create().then(() => {
     callback?.();
@@ -224,10 +226,25 @@ function receiveMessage (event) {
 
   if (data.action === 'getMarkdown') {
     getCurrMarkdown();
+    return;
   }
   if (data.action === 'insertMarkdown') {
     if (!currCrepe) return;
     currCrepe.editor.action(insert(data.markdownValue, true));
+    return;
+  }
+  if (data.action === 'insertNonEditable') {
+    if (!currCrepe) return;
+    const { markdownValue = '', attrs = {} } = data;
+    currCrepe.editor.action((ctx) => {
+      ctx.get(commandsCtx).call(InsertNonEditableCommand.key, {
+        user: userInfo.value.name,
+        editorId: websocketParams.value.room,
+        markdownContent: markdownValue,
+        attrs
+      });
+    });
+    return;
   }
 }
 
@@ -267,7 +284,7 @@ onBeforeUnmount(clearData);
   // height: 40%;
   overflow: auto;
   :deep(.milkdown) {
-    height: 100%;
+    min-height: 100%;
     width: 100%;
     .ProseMirror {
       height: 100%;
@@ -311,10 +328,10 @@ onBeforeUnmount(clearData);
 :deep(.non-editable) {
   position: relative;
   user-select: none !important;
-  padding: 0.75rem;
-  border-radius: 0.375rem;
+  padding: 20px;
+  border-radius: 4px;
   margin: 10px 0;
-  * {
+  *:not(.non-editable-link-btn) {
     pointer-events: none !important;
     user-select: none !important;
   }
@@ -359,6 +376,24 @@ onBeforeUnmount(clearData);
   &:after {
     content: '当前状态：已导入';
     background-color: var(--bg-imported);
+  }
+}
+:deep(.non-editable[data-source-id]) {
+  .non-editable-link-btn {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1;
+    background: rgba(24, 119, 242, 0.1);
+    color: #1877f2;
+    cursor: pointer;
+    z-index: 222;
+    &::before {
+      content: '🔗';
+    }
   }
 }
 :deep(.custom-ai-style) {

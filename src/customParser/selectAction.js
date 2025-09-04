@@ -25,7 +25,7 @@ const LOCK_ACTION = {
   ],
   // 已确认
   verify: [
-    { key: 'import', label: '导入', icon: 'liuzhuan' },
+    { key: 'import', label: '创建', icon: 'liuzhuan' },
     { key: 'unlockTable', label: '解锁', icon: 'jiesuo' }
   ],
   import: [
@@ -149,15 +149,15 @@ function createTooltipContent (type, selection, isHaveLock) {
   // 选中单元格
   if (isInTable(selection) && !(selection instanceof TextSelection)) return ' ';
   if (selection instanceof TextSelection) {
-    // if (!isInList(selection) && ['ordered_list', 'bullet_list'].includes(type)) {
-    //   return NODE_ACTION_MAP[type] || ' ';
-    // }
     return NODE_ACTION_MAP.default;
   }
   // 选中锁定内容需根据状态来展示按钮
   if (['nonEditable'].includes(type)) {
-    const { nodeType = 'draft' } = selection.node.attrs;
+    const { nodeType = 'draft', sourceId } = selection.node.attrs;
     const list = LOCK_ACTION[nodeType] || LOCK_ACTION.draft;
+    if (nodeType === 'verify' && sourceId) {
+      return [singleAction('import', '更新', 'liuzhuan'), singleAction('unlockTable', '解锁', 'jiesuo')].join('');
+    }
     return list.map(({ key, label, icon }) => singleAction(key, label, icon || '')).join('');
   }
   return NODE_ACTION_MAP[type] || ' ';
@@ -221,7 +221,7 @@ export const selectionTooltipPlugin = (editorIdOrGetter, isLockOrGetter) => $pro
             editorView.dispatch(editorView.state.tr.setMeta('updateLock', { dataLabel: 'optimize', markdownContent: data.newText }));
           }
           if (data.action === 'importData') {
-            editorView.dispatch(editorView.state.tr.setMeta('updateLock', { dataLabel: 'import' }));
+            editorView.dispatch(editorView.state.tr.setMeta('updateLock', { dataLabel: 'verify', ...data.infoParams }));
           }
           provider.hide();
         }

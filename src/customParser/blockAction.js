@@ -26,7 +26,7 @@ const getSelectedNodeType = (state) => {
 export const blockPlugin = $prose((ctx) => {
 
   return new Plugin({
-    view: () => {
+    view: (editorView) => {
       let blockDom = document.createElement('div');
 
       let dragDom = document.createElement('div');
@@ -44,6 +44,11 @@ export const blockPlugin = $prose((ctx) => {
       </svg></span>`;
       blockDom.appendChild(dragDom);
       blockDom.className = 'milkdown-block-handle custom-block-handle'
+
+      const handleMousedown = () => {
+        console.log(editorView)
+        editorView.focus();
+      }
 
       const provider = new BlockProvider({
         ctx,
@@ -69,6 +74,7 @@ export const blockPlugin = $prose((ctx) => {
             : 'left'
         }
       });
+      blockDom.addEventListener('mousedown', handleMousedown);
 
       return {
         update (view, prevState) {
@@ -81,7 +87,11 @@ export const blockPlugin = $prose((ctx) => {
           }
           provider.update(view, prevState);
         },
-        destroy: provider.destroy()
+        destroy: () => {
+          provider.destroy();
+          blockDom.removeEventListener('mousedown', handleMousedown);
+          blockDom.remove();
+        }
       }
     },
   });
