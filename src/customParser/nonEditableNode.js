@@ -16,6 +16,7 @@ export const nonEditableNode = $node('nonEditable', () => ({
     key: { default: null },
     sourceId: { default: null }, // 外部系统记录主键
     sourceType: { default: null }, // 外部系统记录类型
+    editStatus: { default: 'checkIn' }, // 编辑状态：检入/检出
   },
   parseDOM: [
     {
@@ -27,7 +28,8 @@ export const nonEditableNode = $node('nonEditable', () => ({
             user: dom.getAttribute('data-user'),
             key: dom.getAttribute('data-key'),
             sourceId: dom.getAttribute('data-source-id'),
-            sourceType: dom.getAttribute('data-source-type')
+            sourceType: dom.getAttribute('data-source-type'),
+            editStatus: dom.getAttribute('data-edit-status')
           };
         }
       },
@@ -55,7 +57,9 @@ export const nonEditableNode = $node('nonEditable', () => ({
         'data-nodeType': node.attrs.nodeType,
         'data-source-id': node.attrs.sourceId,
         'data-source-type': node.attrs.sourceType,
+        'data-edit-status': node.attrs.editStatus,
         class: classes.join(' '),
+        contentEditable: false,
         tabindex: '-1',
       }, ...childrenNode
     ]
@@ -152,6 +156,7 @@ export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
               roomCode: editorId,
               sourceId: box.getAttribute('data-source-id'),
               sourceType: box.getAttribute('data-source-type'),
+              editStatus: box.getAttribute('data-edit-status'),
             }, '*');
             return true;
           }

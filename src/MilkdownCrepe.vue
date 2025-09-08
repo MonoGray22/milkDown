@@ -2,7 +2,8 @@
 import { collab, collabServiceCtx } from "@milkdown/plugin-collab";
 import { LanguageDescription } from '@codemirror/language'
 import { getMarkdown, getHTML, insert, replaceAll } from '@milkdown/utils';
-import { commandsCtx, defaultValueCtx } from "@milkdown/kit/core";
+import { commandsCtx, defaultValueCtx, editorViewCtx } from "@milkdown/kit/core";
+import { TextSelection } from 'prosemirror-state'
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { blockPlugin } from './customParser/blockAction.js';
 import { block } from '@milkdown/plugin-block'
@@ -45,6 +46,7 @@ const userInfo = ref({ name: '用户' });
 const websocketParams = ref({ url: 'ws://113.57.121.225:8713', room: 'markdown' });
 const isHaveLock = ref(true);
 const isHaveLine = ref(true);
+const canModifySystemData = ref(false); // 是否能对系统数据做更改
 
 const doc = new Doc();
 const randomColor = () => Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
@@ -91,13 +93,13 @@ function createEditor (callback) {
       });
     };
     // 更新锁定属性
-    ctx.get(listenerCtx).updateLock = (params = {}) => {
+    ctx.get(listenerCtx).updateLock = (params = { infoParams: {} }) => {
       requestAnimationFrame(() => {
         editor.action((ctx) => {
           ctx.get(commandsCtx).call(UpdateNonEditableCommand.key, {
             user: userInfo.value.name,
             editorId: websocketParams.value.room,
-            attrs: { nodeType: params.dataLabel },
+            attrs: { nodeType: params.dataLabel, ...params.infoParams },
             markdownContent: params.markdownContent
           });
         });
@@ -128,8 +130,7 @@ function createEditor (callback) {
         }
       };
     });
-  })
-    .use(listener)
+  }).use(listener)
     .use(collab)
     .use(imageBlockComponent)
     .use(underline)
@@ -140,7 +141,7 @@ function createEditor (callback) {
     .use(block)
     .use(blockPlugin)
     .use(commonmark)
-    .use(selectionTooltipPlugin(() => websocketParams.value.room, () => isHaveLock.value))
+    .use(selectionTooltipPlugin(() => websocketParams.value.room, () => isHaveLock.value, () => canModifySystemData.value))
     .use(unlockTableListener)
     .use(lockTableListener)
     .use(updateLockListener)
@@ -174,6 +175,7 @@ function setDefaultData (propData) {
   userInfo.value = propData.userInfo;
   isHaveLock.value = propData.isHaveLock ?? true;
   isHaveLine.value = propData.isHaveLine ?? true;
+  canModifySystemData.value = propData.canModifySystemData ?? false;
   websocketParams.value = propData.websocketParams;
 
   nextTick(() => setMarkdownValue(Boolean(propData.readonly)));
@@ -243,6 +245,17 @@ function receiveMessage (event) {
         markdownContent: markdownValue,
         attrs
       });
+    });
+    return;
+  }
+  if (data.action === 'clearSelection') {
+    if (!currCrepe) return;
+    currCrepe.editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      const { state } = view;
+      const tr = state.tr.setSelection(TextSelection.create(state.doc, 0));
+      view.dispatch(tr);
+      view.focus();
     });
     return;
   }
