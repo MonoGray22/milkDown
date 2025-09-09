@@ -7,6 +7,8 @@ import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 export const nonEditableNode = $node('nonEditable', () => ({
   group: 'block',
   content: 'block+',
+  defining: true,
+  isolating: true,
   atom: true,
   selectable: true,
   draggable: false,
@@ -154,6 +156,7 @@ export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
             window.parent.postMessage({
               action: 'linkedIconClick',
               roomCode: editorId,
+              nodeKey: box.getAttribute('data-key'),
               sourceId: box.getAttribute('data-source-id'),
               sourceType: box.getAttribute('data-source-type'),
               editStatus: box.getAttribute('data-edit-status'),
@@ -306,13 +309,28 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
 });
 
 // 去掉不可编辑节点
-export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => ({ user, editorId }) => {
+export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => ({ user, editorId, targetKey }) => {
   return (state, dispatch) => {
-    const { selection } = state;
-    const { from, to } = selection;
+    let { doc, selection } = state;
     const schema = ctx.get(schemaCtx);
     const nodeType = schema.nodes['nonEditable'];
     if (!nodeType) return false;
+
+    let { from, to } = selection;
+
+    if (targetKey) {
+      doc.descendants((node, pos) => {
+        if (node.type === nodeType && node.attrs?.key === targetKey) {
+          from = pos
+          selection.node = node;
+          to = pos + node.nodeSize;
+          return false; // 停止遍历
+        }
+        return true;
+      });
+    }
+
+
     // 向上查找是否在 nonEditable 节点中
     if (selection.node && ['nonEditable'].includes(selection.node.type.name)) {
       const lockUser = selection.node.attrs.user;

@@ -82,12 +82,13 @@ function createEditor (callback) {
       });
     };
     // 解锁
-    ctx.get(listenerCtx).unlockTable = () => {
+    ctx.get(listenerCtx).unlockTable = (params) => {
       requestAnimationFrame(() => {
         editor.action((ctx) => {
           ctx.get(commandsCtx).call(UnwrapNonEditableCommand.key, {
             user: userInfo.value.name,
-            editorId: websocketParams.value.room
+            editorId: websocketParams.value.room,
+            ...params
           });
         });
       });
@@ -215,6 +216,8 @@ async function setMarkdownValue (readonly) {
 function receiveMessage (event) {
   if (event.origin !== window.location.origin) return;
 
+  if (!currCrepe) return;
+
   const { data } = event;
 
   // 初始化
@@ -231,12 +234,10 @@ function receiveMessage (event) {
     return;
   }
   if (data.action === 'insertMarkdown') {
-    if (!currCrepe) return;
     currCrepe.editor.action(insert(data.markdownValue, true));
     return;
   }
   if (data.action === 'insertNonEditable') {
-    if (!currCrepe) return;
     const { markdownValue = '', attrs = {} } = data;
     currCrepe.editor.action((ctx) => {
       ctx.get(commandsCtx).call(InsertNonEditableCommand.key, {
@@ -248,8 +249,17 @@ function receiveMessage (event) {
     });
     return;
   }
+  if (data.action === 'unlockByKey') {
+    currCrepe.editor.action((ctx) => {
+      ctx.get(commandsCtx).call(UnwrapNonEditableCommand.key, {
+        user: userInfo.value.name,
+        editorId: websocketParams.value.room,
+        targetKey: data.targetKey
+      });
+    });
+    return;
+  }
   if (data.action === 'clearSelection') {
-    if (!currCrepe) return;
     currCrepe.editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
       const { state } = view;
