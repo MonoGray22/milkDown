@@ -153,7 +153,7 @@ function createTooltipContent (type, selection, isHaveLock, canModifySystemData)
     const list = LOCK_ACTION[nodeType] || LOCK_ACTION.draft;
     if (sourceId && canModifySystemData) {
       if (nodeType === 'verify') {
-        if (sourceType !== 'WeightScoringInstance') {
+        if (!['WeightScoringConcept', 'WeightScoringInstance'].includes(sourceType)) {
           return [singleAction('unlockTable', '解锁', 'jiesuo')].join('');
         }
         if (editStatus === 'checkIn') {
