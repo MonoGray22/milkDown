@@ -152,25 +152,38 @@ function createTooltipContent (type, selection, isHaveLock, canModifySystemData)
     const { nodeType = 'draft', sourceId, sourceType, editStatus } = selection.node.attrs;
     const list = LOCK_ACTION[nodeType] || LOCK_ACTION.draft;
     if (sourceId && canModifySystemData) {
+      const sourceNum = String(sourceId).split(',').length;
       if (nodeType === 'verify') {
         if (!['WeightScoringConcept', 'WeightScoringInstance'].includes(sourceType)) {
           return [singleAction('unlockTable', '解锁', 'jiesuo')].join('');
         }
         if (editStatus === 'checkIn') {
-          return [
-            singleAction('checkout', '检出', 'bianji1'),
-            singleAction('unlockTable', '解锁', 'jiesuo')
-          ].join('');
+          if (sourceNum > 1) {
+            return [
+              singleAction('checkout', '检出', 'bianji1'),
+              singleAction('unlockTable', '解锁', 'jiesuo')
+            ].join('');
+          }
+          return [singleAction('unlockTable', '解锁', 'jiesuo')].join('');
         } else {
+          if (sourceNum > 1) {
+            return [
+              singleAction('checkIn', '撤销检出', 'chexiao'),
+              singleAction('update', '更新', 'genghuan'),
+              singleAction('unlockTable', '解锁', 'jiesuo')
+            ].join('');
+          }
           return [
-            singleAction('checkIn', '撤销检出', 'chexiao'),
             singleAction('update', '更新', 'genghuan'),
             singleAction('unlockTable', '解锁', 'jiesuo')
           ].join('');
         }
       }
       if (editStatus === 'checkout')
-        return [{ key: 'checkIn', label: '撤销检出', icon: 'chexiao' }, ...list].map(({ key, label, icon }) => singleAction(key, label, icon || '')).join('');
+        if (sourceNum > 1) {
+          return [{ key: 'checkIn', label: '撤销检出', icon: 'chexiao' }, ...list].map(({ key, label, icon }) => singleAction(key, label, icon || '')).join('');
+        }
+      return [...list].map(({ key, label, icon }) => singleAction(key, label, icon || '')).join('');
     }
     if (nodeType === 'verify' && canModifySystemData) {
       return [

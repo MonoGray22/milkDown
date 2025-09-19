@@ -46,7 +46,6 @@ export const blockPlugin = $prose((ctx) => {
       blockDom.className = 'milkdown-block-handle custom-block-handle'
 
       const handleMousedown = () => {
-        console.log(editorView)
         editorView.focus();
       }
 

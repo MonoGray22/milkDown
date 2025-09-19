@@ -9,6 +9,7 @@ import { blockPlugin } from './customParser/blockAction.js';
 import { block } from '@milkdown/plugin-block'
 import { lockTableListener, unlockTableListener, updateLockListener } from './customParser/listener.js';
 import { nonEditable, nonEditablePlugin, InsertNonEditableCommand, UnwrapNonEditableCommand, UpdateNonEditableCommand } from './customParser/nonEditableNode.js';
+import { nonEditLabel } from './customParser/labelNode.js';
 import { customLinkPlugin } from './customParser/customLink.js';
 import { selectionTooltipPlugin } from './customParser/selectAction.js';
 import { underline } from './customParser/customUnderline.js';
@@ -138,6 +139,7 @@ function createEditor (callback) {
     .use(video)
     .use(nonEditablePlugin(() => websocketParams.value.room))
     .use(nonEditable)
+    .use(nonEditLabel)
     .use(customLinkPlugin)
     .use(block)
     .use(blockPlugin)
@@ -259,6 +261,17 @@ function receiveMessage (event) {
     });
     return;
   }
+  if (data.action === 'updateAttrByKey') {
+    currCrepe.editor.action((ctx) => {
+      ctx.get(commandsCtx).call(UpdateNonEditableCommand.key, {
+        user: userInfo.value.name,
+        editorId: websocketParams.value.room,
+        targetKey: data.targetKey,
+        attrs: data.infoParams
+      });
+    });
+    return;
+  }
   if (data.action === 'clearSelection') {
     currCrepe.editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
@@ -373,6 +386,18 @@ onBeforeUnmount(clearData);
     }
   }
 }
+:deep(.editor-quote-style) {
+  display: inline-block;
+  background: #fafafa;
+  border-radius: 4px 4px 4px 4px;
+  border: 1px solid #d9d9d9;
+  padding: 2px 8px;
+  margin: 0 2px;
+  font-size: 12px;
+  vertical-align: middle;
+  line-height: normal;
+  margin-bottom: 2px;
+}
 :deep(.non-editable-draft) {
   background-color: var(--bg-draft);
   &:after {
@@ -466,5 +491,6 @@ onBeforeUnmount(clearData);
 }
 :deep(.custom-block-handle) {
   top: 0;
+  left: 2px !important;
 }
 </style>

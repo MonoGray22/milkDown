@@ -359,22 +359,32 @@ export const UnwrapNonEditableCommand = $command('UnwrapNonEditable', (ctx) => (
 });
 
 // 更新 nonEditable 节点属性
-export const UpdateNonEditableCommand = $command('UpdateNonEditable', (ctx) => ({ user, editorId, attrs = {}, markdownContent }) => {
+export const UpdateNonEditableCommand = $command('UpdateNonEditable', (ctx) => ({ user, editorId, attrs = {}, markdownContent, targetKey }) => {
   return (state, dispatch) => {
-    const { selection } = state;
-    const { from, to } = selection;
+    let { doc, selection } = state;
     const schema = ctx.get(schemaCtx);
     const parser = ctx.get(parserCtx);
 
     const nodeType = schema.nodes['nonEditable'];
-
     if (!nodeType) return false;
 
+    let { from, to } = selection;
     let targetNode = null;
     let pos = null;
 
+    if (targetKey) {
+      doc.descendants((node, pos) => {
+        if (node.type === nodeType && node.attrs?.key === targetKey) {
+          from = pos
+          to = pos + node.nodeSize;
+          return false; // 停止遍历
+        }
+        return true;
+      });
+    }
+
     // 找到选中的 nonEditable 节点
-    state.doc.nodesBetween(from, to, (node, nodePos) => {
+    doc.nodesBetween(from, to, (node, nodePos) => {
       if (['nonEditable'].includes(node.type.name)) {
         targetNode = node;
         pos = nodePos;
