@@ -16,9 +16,11 @@ export const lockTableListener = $prose((ctx) => {
       // 检查是否有任何事务包含lockTable元数据
       const hasLockTableMeta = transactions.some(tr => tr.getMeta('lockTable'));
       if (hasLockTableMeta) {
+        const trWithMeta = transactions.find(tr => tr.getMeta('lockTable'));
         const lockTableFn = ctx.get(listenerCtx).lockTable;
+        const params = trWithMeta.getMeta('lockTable');
         if (typeof lockTableFn === 'function') {
-          lockTableFn();
+          lockTableFn(params);
         }
       }
       return null; // 不修改事务
@@ -33,9 +35,11 @@ export const unlockTableListener = $prose((ctx) => {
       // 检查是否有任何事务包含lockTable元数据
       const hasLockTableMeta = transactions.some(tr => tr.getMeta('unlockTable'));
       if (hasLockTableMeta) {
+        const trWithMeta = transactions.find(tr => tr.getMeta('unlockTable'));
         const lockTableFn = ctx.get(listenerCtx).unlockTable;
+        const params = trWithMeta.getMeta('unlockTable');
         if (typeof lockTableFn === 'function') {
-          lockTableFn();
+          lockTableFn(params);
         }
       }
       return null; // 不修改事务
@@ -52,9 +56,9 @@ export const updateLockListener = $prose((ctx) => {
       if (hasLockTableMeta) {
         const trWithMeta = transactions.find(tr => tr.getMeta('updateLock'));
         const lockTableFn = ctx.get(listenerCtx).updateLock;
-        const param = trWithMeta.getMeta('updateLock');
+        const params = trWithMeta.getMeta('updateLock');
         if (typeof lockTableFn === 'function') {
-          lockTableFn(param);
+          lockTableFn(params);
         }
       }
       return null; // 不修改事务

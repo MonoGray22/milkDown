@@ -3,6 +3,8 @@ import { NodeSelection } from 'prosemirror-state';
 import { parserCtx, schemaCtx, serializerCtx } from '@milkdown/core';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 
+const LOCK_TYPE_LABEL = { transition: '过渡', frozen: '固化' };
+
 // 定义不可编辑节点(div)
 export const nonEditableNode = $node('nonEditable', () => ({
   group: 'block',
@@ -13,6 +15,7 @@ export const nonEditableNode = $node('nonEditable', () => ({
   selectable: true,
   draggable: false,
   attrs: {
+    lockType: { default: 'transition' },
     nodeType: { default: null },
     user: { default: null },
     key: { default: null },
@@ -26,6 +29,7 @@ export const nonEditableNode = $node('nonEditable', () => ({
       getAttrs: (dom) => {
         if (dom instanceof HTMLElement) {
           return {
+            lockType: dom.getAttribute('data-lockType'),
             nodeType: dom.getAttribute('data-nodeType'),
             user: dom.getAttribute('data-user'),
             key: dom.getAttribute('data-key'),
@@ -41,6 +45,7 @@ export const nonEditableNode = $node('nonEditable', () => ({
     const classes = ['non-editable'];
     if (node.attrs.nodeType) classes.push(`non-editable-${node.attrs.nodeType}`);
     let childrenNode = [];
+    childrenNode.push(['div', { class: 'non-editable-left-action' }, LOCK_TYPE_LABEL[node.attrs.lockType]]);
     if (node.attrs.sourceId) {
       childrenNode.push(['button', {
         class: 'non-editable-link-btn',
@@ -56,7 +61,8 @@ export const nonEditableNode = $node('nonEditable', () => ({
         'data-type': 'non-editable',
         'data-user': node.attrs.user,
         'data-key': node.attrs.key,
-        'data-nodeType': node.attrs.nodeType,
+        'data-lock-type': node.attrs.lockType,
+        'data-node-type': node.attrs.nodeType,
         'data-source-id': node.attrs.sourceId,
         'data-source-type': node.attrs.sourceType,
         'data-edit-status': node.attrs.editStatus,
@@ -158,6 +164,7 @@ export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
               roomCode: editorId,
               nodeKey: box.getAttribute('data-key'),
               sourceId: box.getAttribute('data-source-id'),
+              lockType: box.getAttribute('data-lock-type'),
               sourceType: box.getAttribute('data-source-type'),
               editStatus: box.getAttribute('data-edit-status'),
             }, '*');
@@ -284,7 +291,7 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
     }
 
     const wrappedNode = nodeType.create(
-      { user, key: nodeKey, nodeType: 'draft' },
+      { user, key: nodeKey, nodeType: 'draft', ...attrs },
       wrappedContent
     );
     if (!wrappedNode) return false;

@@ -17,6 +17,7 @@ const labelNode = $node('labelNode', () => ({
   attrs: {
     name: { default: '' },
     value: { default: '' },
+    category: { default: 'complete' }
   },
   // 粘贴/导入 HTML -> Node
   parseDOM: [
@@ -27,19 +28,21 @@ const labelNode = $node('labelNode', () => ({
         return {
           name: el.getAttribute('data-name') || el.textContent || '',
           value: el.getAttribute('data-value') || '',
+          category: el.getAttribute('data-category') || '',
         };
       },
     },
   ],
   // Node -> DOM 渲染
   toDOM: (node) => {
-    const { name, value } = node.attrs;
+    const { name, value, category } = node.attrs;
     return [
       'span',
       {
         class: 'editor-quote-style',
         'data-name': name,
         'data-value': value,
+        'data-category': category,
         tabindex: '-1',
         contentEditable: false,
       },
@@ -51,28 +54,29 @@ const labelNode = $node('labelNode', () => ({
     runner: (state, node, type) => {
       const name = node.data?.name || '';
       const value = node.data?.value || '';
-      state.addNode(type, { name, value });
+      const category = node.data?.category || '';
+      state.addNode(type, { name, value, category });
     },
 
   },
   toMarkdown: {
     match: (node) => node.type.name === 'labelNode',
     runner: (state, node) => {
-      const { name = '', value = '' } = node.attrs || {};
-      state.addNode('text', undefined, `[[${name}|${value}]]`);
+      const { name = '', value = '', category = '' } = node.attrs || {};
+      state.addNode('text', undefined, `[[${name}|${value}|${category}]]`);
     },
   },
 }));
 
 // 输入规则：[[名称|{值}]]
-const LABEL_RE = /\[\[([^|\]]+)\|(\{[^}]*\})\]\]$/;
+const LABEL_RE = /\[\[([^|\]]+)\|(\{[^}]*\})\|(\{[^}]*\})\]\]$/;
 
 const labelInputRule = $inputRule((ctx) => {
   const type = labelNode.type(ctx);
   return new InputRule(LABEL_RE, (state, match, start, end) => {
-    const [, name, value] = match;
+    const [, name, value, category] = match;
     return state.tr
-      .replaceRangeWith(start, end, type.create({ name: name.trim(), value: value.trim() }));
+      .replaceRangeWith(start, end, type.create({ name: name.trim(), value: value.trim(), category: category.trim() }));
   });
 });
 
@@ -108,9 +112,9 @@ const labelDeleteKeyMap = $prose((ctx) => {
 });
 
 // 全局多次匹配的正则
-const LABEL_G = /\[\[([^|\]]+)\|(\{[^}]*\})\]\]/g;
+const LABEL_G = /\[\[([^|\]]+)\|(\{[^}]*\})\|(\{[^}]*\})\]\]/g;
 
-// 直接粘贴[[名称|{值}]]
+// 直接粘贴[[名称|{值}|{完整类型(极简/完整)}]]
 const labelPasteHandler = $prose((ctx) => {
   const schema = ctx.get(schemaCtx);
   const labelType = labelNode.type(ctx);
@@ -126,16 +130,18 @@ const labelPasteHandler = $prose((ctx) => {
     let m;
 
     while ((m = LABEL_G.exec(line)) !== null) {
+      console.log(m)
       const full = m[0];
       const name = (m[1] || '').trim();
       const value = (m[2] || '').trim();
+      const category = (m[3] || '').trim();
       const start = m.index;
 
       const plain = line.slice(last, start);
       const t = asText(plain);
       if (t) parts.push(t);
 
-      parts.push(labelType.create({ name, value }));
+      parts.push(labelType.create({ name, value, category }));
       last = start + full.length;
     }
 
@@ -181,7 +187,7 @@ const labelPasteHandler = $prose((ctx) => {
   });
 });
 
-// 作用：在 remark (mdast) 阶段，把普通 Text 节点里的 [[name|{value}]] 拆成若干节点：Text / labelNode / Text ...
+// 作用：在 remark (mdast) 阶段，把普通 Text 节点里的 [[name|{value}|{category}]] 拆成若干节点：Text / labelNode / Text ...
 
 const remarkLabelNode = $remark('remark-video', () => () => (tree) => {
   visit(tree, 'text', (node, index, parent) => {
@@ -198,7 +204,7 @@ const remarkLabelNode = $remark('remark-video', () => () => (tree) => {
     let m;
 
     while ((m = LABEL_G.exec(value)) !== null) {
-      const [full, nameRaw, valueRaw] = m;
+      const [full, nameRaw, valueRaw, categoryRaw] = m;
       const start = m.index;
 
       const plain = value.slice(last, start);
@@ -209,6 +215,7 @@ const remarkLabelNode = $remark('remark-video', () => () => (tree) => {
         data: {
           name: (nameRaw || '').trim(),
           value: (valueRaw || '').trim(),
+          category: (categoryRaw || '').trim(),
         },
       });
       last = start + full.length;

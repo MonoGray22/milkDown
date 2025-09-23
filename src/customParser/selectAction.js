@@ -30,27 +30,28 @@ const LOCK_ACTION = {
   ]
 };
 
-const NODE_ACTION_MAP = {
-  nonEditable: singleAction('unlockTable', '解锁'),
-  blockquote: singleAction('lockTable', '锁定'),
-  heading: singleAction('lockTable', '锁定'),
-  ordered_list: singleAction('lockTable', '锁定'),
-  bullet_list: singleAction('lockTable', '锁定'),
-  list_item: singleAction('lockTable', '锁定'),
-  paragraph: singleAction('lockTable', '锁定'),
-  table: singleAction('lockTable', '锁定'),
-  code_block: ' ',
-  hr: ' ',
-  customLink: ' ',
-  image: ' ',
-  default: AI_ACTIONS.map(createDropdownItem).join('')
+const NODE_ACTION_MAP = (canModifySystemData) => {
+  return {
+    blockquote: singleAction({ key: 'lockTable', label: '锁定', canModifySystemData }),
+    heading: singleAction({ key: 'lockTable', label: '锁定', canModifySystemData }),
+    ordered_list: singleAction({ key: 'lockTable', label: '锁定', canModifySystemData }),
+    bullet_list: singleAction({ key: 'lockTable', label: '锁定', canModifySystemData }),
+    list_item: singleAction({ key: 'lockTable', label: '锁定', canModifySystemData }),
+    paragraph: singleAction({ key: 'lockTable', label: '锁定', canModifySystemData }),
+    table: singleAction({ key: 'lockTable', label: '锁定', canModifySystemData }),
+    code_block: ' ',
+    hr: ' ',
+    customLink: ' ',
+    image: ' ',
+    default: AI_ACTIONS.map(createDropdownItem).join('')
+  }
 };
 
 // ====== 工具函数 ======
 function createDropdownItem ({ key, label, icon }) {
   return `
     <div class="custom-ai-style-wrapper">
-      <div class="custom-ai-style" data-label="${key}"><i class="iconfont icon-${icon}" style="pointer-events: none;"></i> ${label}</div>
+      <div class="custom-ai-style"><i class="iconfont icon-${icon}" style="pointer-events: none;"></i> ${label}</div>
       <div class="custom-dropdown">
         <div class="dropdown-item" data-label="${key}-simple">简单</div>
         <div class="dropdown-item" data-label="${key}-full">完整</div>
@@ -59,7 +60,18 @@ function createDropdownItem ({ key, label, icon }) {
   `;
 }
 
-function singleAction (key, label, icon = 'suoding') {
+function singleAction ({ key, label, icon = 'suoding', canModifySystemData }) {
+  if (key === 'lockTable' && canModifySystemData) {
+    return `
+        <div class="custom-ai-style-wrapper">
+        <div class="custom-ai-style"><i class="iconfont icon-${icon}" style="pointer-events: none;"></i> ${label}</div>
+        <div class="custom-dropdown">
+          <div class="dropdown-item" data-label="${key}-frozen">固化</div>
+          <div class="dropdown-item" data-label="${key}-transition">过渡</div>
+        </div>
+      </div>
+    `;
+  }
   return `<div class="custom-ai-style" data-label="${key}">
   <i class="iconfont icon-${icon}" style="pointer-events: none;"></i> ${label}</div>`;
 }
@@ -139,61 +151,62 @@ function getSelectedNodeType (state) {
 
 
 function createTooltipContent (type, selection, isHaveLock, canModifySystemData) {
+  const actionMap = NODE_ACTION_MAP(canModifySystemData)
   if (!isHaveLock) {
-    return NODE_ACTION_MAP[type]?.trim() ? NODE_ACTION_MAP.default : '';
+    return actionMap[type]?.trim() ? actionMap.default : '';
   }
   // 选中单元格
   if (isInTable(selection) && !(selection instanceof TextSelection)) return ' ';
   if (selection instanceof TextSelection) {
-    return NODE_ACTION_MAP.default;
+    return actionMap.default;
   }
   // 选中锁定内容需根据状态来展示按钮
   if (['nonEditable'].includes(type)) {
-    const { nodeType = 'draft', sourceId, sourceType, editStatus } = selection.node.attrs;
+    const { nodeType = 'draft', lockType = 'transition', sourceId, sourceType, editStatus } = selection.node.attrs;
     const list = LOCK_ACTION[nodeType] || LOCK_ACTION.draft;
     if (sourceId && canModifySystemData) {
       const sourceNum = String(sourceId).split(',').length;
       if (nodeType === 'verify') {
         if (!['WeightScoringConcept', 'WeightScoringInstance'].includes(sourceType)) {
-          return [singleAction('unlockTable', '解锁', 'jiesuo')].join('');
+          return [singleAction({ key: 'unlockTable', label: '解锁', icon: 'jiesuo' })].join('');
         }
         if (editStatus === 'checkIn') {
           if (sourceNum > 1) {
             return [
-              singleAction('checkout', '检出', 'bianji1'),
-              singleAction('unlockTable', '解锁', 'jiesuo')
+              singleAction({ key: 'checkout', label: '检出', icon: 'bianji1' }),
+              singleAction({ key: 'unlockTable', label: '解锁', icon: 'jiesuo' })
             ].join('');
           }
-          return [singleAction('unlockTable', '解锁', 'jiesuo')].join('');
+          return [singleAction({ key: 'unlockTable', label: '解锁', icon: 'jiesuo' })].join('');
         } else {
           if (sourceNum > 1) {
             return [
-              singleAction('checkIn', '撤销检出', 'chexiao'),
-              singleAction('update', '更新', 'genghuan'),
-              singleAction('unlockTable', '解锁', 'jiesuo')
+              singleAction({ key: 'checkIn', label: '撤销检出', icon: 'chexiao' }),
+              singleAction({ key: 'update', label: '更新', icon: 'genghuan' }),
+              singleAction({ key: 'unlockTable', label: '解锁', icon: 'jiesuo' })
             ].join('');
           }
           return [
-            singleAction('update', '更新', 'genghuan'),
-            singleAction('unlockTable', '解锁', 'jiesuo')
+            singleAction({ key: 'update', label: '更新', icon: 'genghuan' }),
+            singleAction({ key: 'unlockTable', label: '解锁', icon: 'jiesuo' })
           ].join('');
         }
       }
       if (editStatus === 'checkout')
         if (sourceNum > 1) {
-          return [{ key: 'checkIn', label: '撤销检出', icon: 'chexiao' }, ...list].map(({ key, label, icon }) => singleAction(key, label, icon || '')).join('');
+          return [{ key: 'checkIn', label: '撤销检出', icon: 'chexiao' }, ...list].map(({ key, label, icon }) => singleAction({ key, label, icon: icon || '' })).join('');
         }
-      return [...list].map(({ key, label, icon }) => singleAction(key, label, icon || '')).join('');
+      return [...list].map(({ key, label, icon }) => singleAction({ key, label, icon: icon || '' })).join('');
     }
-    if (nodeType === 'verify' && canModifySystemData) {
+    if (nodeType === 'verify' && canModifySystemData && lockType === 'frozen') {
       return [
-        singleAction('import', '创建', 'chuangjian1'),
-        singleAction('unlockTable', '解锁', 'jiesuo')
+        singleAction({ key: 'import', label: '创建', icon: 'chuangjian1' }),
+        singleAction({ key: 'unlockTable', label: '解锁', icon: 'jiesuo' })
       ].join('');
     }
-    return list.map(({ key, label, icon }) => singleAction(key, label, icon || '')).join('');
+    return list.map(({ key, label, icon }) => singleAction({ key, label, icon: icon || '' })).join('');
   }
-  return NODE_ACTION_MAP[type] || ' ';
+  return actionMap[type] || ' ';
 }
 
 function replaceSelectedText (editorView, newText) {
@@ -220,14 +233,22 @@ export const selectionTooltipPlugin = (editorIdOrGetter, isLockOrGetter, canModi
 
         if (target.classList.contains('dropdown-item') || target.classList.contains('custom-ai-style')) {
           const dataLabel = target.getAttribute('data-label');
+          if (!dataLabel) return;
           const editorId = typeof editorIdOrGetter === 'function' ? editorIdOrGetter() : editorIdOrGetter;
-
+          // 锁定/解锁
           if (['lockTable', 'unlockTable'].includes(dataLabel)) {
             provider.hide();
             editorView.dispatch(editorView.state.tr.setMeta(dataLabel, true));
             return;
           }
-
+          // 锁定为固化/过渡
+          if (['lockTable-frozen', 'lockTable-transition'].includes(dataLabel)) {
+            const lockType = dataLabel.split('-')[1];
+            provider.hide();
+            editorView.dispatch(editorView.state.tr.setMeta('lockTable', { attrs: { lockType } }));
+            return;
+          }
+          // 流转状态：优化中/已确认
           if (['optimize', 'verify'].includes(dataLabel)) {
             editorView.dispatch(editorView.state.tr.setMeta('updateLock', { dataLabel }));
           }

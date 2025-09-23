@@ -72,12 +72,13 @@ function createEditor (callback) {
   // 监听器注册
   editor.config((ctx) => {
     // 锁定
-    ctx.get(listenerCtx).lockTable = () => {
+    ctx.get(listenerCtx).lockTable = (params) => {
       requestAnimationFrame(() => {
         editor.action((ctx) => {
           ctx.get(commandsCtx).call(InsertNonEditableCommand.key, {
             user: userInfo.value.name,
             editorId: websocketParams.value.room,
+            ...params
           });
         });
       });
@@ -367,9 +368,29 @@ onBeforeUnmount(clearData);
   padding: 20px;
   border-radius: 4px;
   margin: 10px 0;
-  *:not(.non-editable-link-btn) {
+  *:not(.non-editable-link-btn):not(.non-editable-left-action) {
     pointer-events: none !important;
     user-select: none !important;
+  }
+  .non-editable-left-action {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    font-size: 12px;
+    padding: 2px 6px;
+    font-weight: 400;
+    border-radius: 4px;
+    color: #ffffff;
+  }
+  &[data-lock-type='transition'] {
+    .non-editable-left-action {
+      background-color: #ff9800;
+    }
+  }
+  &[data-lock-type='frozen'] {
+    .non-editable-left-action {
+      background-color: #4caf50;
+    }
   }
   &:after {
     position: absolute;
@@ -397,6 +418,10 @@ onBeforeUnmount(clearData);
   vertical-align: middle;
   line-height: normal;
   margin-bottom: 2px;
+  &[data-category='{complete}'] {
+    background-color: #e3f2fd;
+    color: #0d47a1;
+  }
 }
 :deep(.non-editable-draft) {
   background-color: var(--bg-draft);
@@ -426,6 +451,7 @@ onBeforeUnmount(clearData);
     background-color: var(--bg-imported);
   }
 }
+
 :deep(.non-editable[data-source-id]) {
   .non-editable-link-btn {
     position: absolute;
