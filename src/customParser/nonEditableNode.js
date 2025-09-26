@@ -3,7 +3,7 @@ import { NodeSelection } from 'prosemirror-state';
 import { parserCtx, schemaCtx, serializerCtx } from '@milkdown/core';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 
-const LOCK_TYPE_LABEL = { transition: '过渡', frozen: '固化' };
+const LOCK_TYPE_LABEL = { transition: '研讨', frozen: '固化' };
 
 // 定义不可编辑节点(div)
 export const nonEditableNode = $node('nonEditable', () => ({
@@ -208,7 +208,6 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
     if (!nodeType) return false;
 
     const nodeKey = new Date().getTime() + Math.random().toString(36).substring(2, 15);
-
     if (markdownContent) {
       let content;
       try {
@@ -227,10 +226,10 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
       const docForSerialize = schema.nodes.doc.create(null, wrappedNode.content);
       window.parent.postMessage({
         action: 'lockData',
-        roomCode: editorId,
+        infoParams: attrs,
         nodeKey,
-        selectedMarkdown: serializer(docForSerialize),
-        infoParams: attrs
+        roomCode: editorId,
+        selectedMarkdown: serializer(docForSerialize)
       }, '*');
       // const tr = state.tr.insert(from, wrappedNode);
       // tr.setSelection(TextSelection.create(tr.doc, from + wrappedNode.nodeSize)); // 光标放到节点后
@@ -301,9 +300,10 @@ export const InsertNonEditableCommand = $command('InsertNonEditable', (ctx) => (
     // 锁定内容
     window.parent.postMessage({
       action: 'lockData',
-      roomCode: editorId,
+      infoParams: attrs,
       nodeKey,
-      selectedMarkdown: serializer(docNode),
+      roomCode: editorId,
+      selectedMarkdown: serializer(docNode)
     }, '*')
 
     const tr = state.tr.replaceRangeWith(from, to, wrappedNode);

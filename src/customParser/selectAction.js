@@ -67,7 +67,7 @@ function singleAction ({ key, label, icon = 'suoding', canModifySystemData }) {
         <div class="custom-ai-style"><i class="iconfont icon-${icon}" style="pointer-events: none;"></i> ${label}</div>
         <div class="custom-dropdown">
           <div class="dropdown-item" data-label="${key}-frozen">固化</div>
-          <div class="dropdown-item" data-label="${key}-transition">过渡</div>
+          <div class="dropdown-item" data-label="${key}-transition">研讨</div>
         </div>
       </div>
     `;
@@ -241,7 +241,7 @@ export const selectionTooltipPlugin = (editorIdOrGetter, isLockOrGetter, canModi
             editorView.dispatch(editorView.state.tr.setMeta(dataLabel, true));
             return;
           }
-          // 锁定为固化/过渡
+          // 锁定为固化/研讨
           if (['lockTable-frozen', 'lockTable-transition'].includes(dataLabel)) {
             const lockType = dataLabel.split('-')[1];
             provider.hide();
