@@ -6,6 +6,20 @@
   "description": "markdown编辑器图标",
   "glyphs": [
     {
+      "icon_id": "35167158",
+      "name": "投票",
+      "font_class": "toupiao1",
+      "unicode": "e7a0",
+      "unicode_decimal": 59296
+    },
+    {
+      "icon_id": "39340844",
+      "name": "讨论",
+      "font_class": "taolun3",
+      "unicode": "e7a9",
+      "unicode_decimal": 59305
+    },
+    {
       "icon_id": "19949368",
       "name": "创建",
       "font_class": "chuangjian1",

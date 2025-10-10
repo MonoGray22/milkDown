@@ -3,7 +3,10 @@ import { NodeSelection } from 'prosemirror-state';
 import { parserCtx, schemaCtx, serializerCtx } from '@milkdown/core';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 
-const LOCK_TYPE_LABEL = { transition: '研讨', frozen: '固化' };
+const LOCK_TYPE_INFO = {
+  transition: { label: '研讨', define: '与策枢的目标、措施、问题等关键因素仅仅是引用关系，起到的作用是思考、分析、论证过程的记录，以及相关区域的承上启下的过渡作用。' },
+  frozen: { label: '固化', define: '与策枢的目标、措施、问题等关键要素有明确的对应关系，会影响到这些关键因素的创建、修改、删除操作，起到的作用是协同共识下的建模。' }
+};
 
 // 定义不可编辑节点(div)
 export const nonEditableNode = $node('nonEditable', () => ({
@@ -44,16 +47,27 @@ export const nonEditableNode = $node('nonEditable', () => ({
   toDOM: (node) => {
     const classes = ['non-editable'];
     if (node.attrs.nodeType) classes.push(`non-editable-${node.attrs.nodeType}`);
+    const { label, define } = LOCK_TYPE_INFO[node.attrs.lockType];
     let childrenNode = [];
-    childrenNode.push(['div', { class: 'non-editable-left-action' }, LOCK_TYPE_LABEL[node.attrs.lockType]]);
+    childrenNode.push(['div', { class: 'non-editable-left-action', title: define }, label]); // 左侧操作
+    let rightActionDom = ['div', { class: 'non-editable-right-action' }]; // 右侧操作
+    if (node.attrs.nodeType !== 'draft') {
+      rightActionDom.push(['div', {
+        class: 'non-editable-discuss-btn iconfont icon-taolun3',
+        title: '讨论',
+      }, '']);
+      rightActionDom.push(['div', {
+        class: 'non-editable-vote-btn iconfont icon-toupiao1',
+        title: '投票',
+      }, '']);
+    }
     if (node.attrs.sourceId) {
-      childrenNode.push(['button', {
-        class: 'non-editable-link-btn',
-        type: 'button',
+      rightActionDom.push(['div', {
+        class: 'non-editable-link-btn iconfont icon-lianjie2',
         title: '查看引用对象',
-        'aria-label': '查看引用对象'
       }, '']);
     };
+    childrenNode.push(rightActionDom); // 左侧操作
     childrenNode.push(['div', { class: 'non-editable-inner', contentEditable: 'false', }, 0]);
     return [
       'div',
@@ -155,28 +169,50 @@ export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
       handleDOMEvents: {
         click (view, event) {
           const target = event.target;
-          if (target instanceof HTMLElement && target.closest('.non-editable-link-btn')) {
+          if (target instanceof HTMLElement) {
             event.preventDefault();
-            const btn = target.closest('.non-editable-link-btn')
-            const box = btn.closest('[data-type="non-editable"]')
-            window.parent.postMessage({
-              action: 'linkedIconClick',
-              roomCode: editorId,
-              nodeKey: box.getAttribute('data-key'),
-              sourceId: box.getAttribute('data-source-id'),
-              lockType: box.getAttribute('data-lock-type'),
-              sourceType: box.getAttribute('data-source-type'),
-              editStatus: box.getAttribute('data-edit-status'),
-            }, '*');
+            const linkBtn = target.closest('.non-editable-link-btn');
+            const discussBtn = target.closest('.non-editable-discuss-btn');
+            const voteBtn = target.closest('.non-editable-vote-btn');
+            if (linkBtn) {
+              const box = linkBtn.closest('[data-type="non-editable"]');
+              window.parent.postMessage({
+                action: 'linkedIconClick',
+                roomCode: editorId,
+                nodeKey: box.getAttribute('data-key'),
+                sourceId: box.getAttribute('data-source-id'),
+                lockType: box.getAttribute('data-lock-type'),
+                sourceType: box.getAttribute('data-source-type'),
+                editStatus: box.getAttribute('data-edit-status'),
+              }, '*');
+            }
+            if (discussBtn) {
+              const box = discussBtn.closest('[data-type="non-editable"]');
+              window.parent.postMessage({
+                action: 'discussIconClick',
+                roomCode: editorId,
+                nodeKey: box.getAttribute('data-key')
+              }, '*');
+            }
+            if (voteBtn) {
+              const box = voteBtn.closest('[data-type="non-editable"]');
+              window.parent.postMessage({
+                action: 'voteIconClick',
+                roomCode: editorId,
+                nodeKey: box.getAttribute('data-key')
+              }, '*');
+            }
             return true;
           }
           return false;
         },
         mousedown (view, event) {
           const target = event.target;
-          if (target instanceof HTMLElement && target.closest('.non-editable-link-btn')) {
-            event.preventDefault();
-            return true;
+          if (target instanceof HTMLElement) {
+            if (target.closest('.non-editable-link-btn') || target.closest('.non-editable-discuss-btn') || target.closest('.non-editable-vote-btn')) {
+              event.preventDefault();
+              return true;
+            }
           }
           return false;
         },

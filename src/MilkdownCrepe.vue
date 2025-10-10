@@ -365,10 +365,10 @@ onBeforeUnmount(clearData);
 :deep(.non-editable) {
   position: relative;
   user-select: none !important;
-  padding: 20px;
+  padding: 30px 20px 20px;
   border-radius: 4px;
   margin: 10px 0;
-  *:not(.non-editable-link-btn):not(.non-editable-left-action) {
+  :not(.non-editable-right-action, .non-editable-left-action) * {
     pointer-events: none !important;
     user-select: none !important;
   }
@@ -381,6 +381,21 @@ onBeforeUnmount(clearData);
     font-weight: 400;
     border-radius: 4px;
     color: #ffffff;
+  }
+  .non-editable-right-action {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    z-index: 222;
+    .non-editable-link-btn,
+    .non-editable-discuss-btn,
+    .non-editable-vote-btn {
+      padding: 2px 6px;
+      font-size: 16px;
+      cursor: pointer;
+    }
   }
   &[data-lock-type='transition'] {
     .non-editable-left-action {
@@ -449,25 +464,6 @@ onBeforeUnmount(clearData);
   &:after {
     content: '当前状态：已导入';
     background-color: var(--bg-imported);
-  }
-}
-
-:deep(.non-editable[data-source-id]) {
-  .non-editable-link-btn {
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 12px;
-    line-height: 1;
-    background: rgba(24, 119, 242, 0.1);
-    color: #1877f2;
-    cursor: pointer;
-    z-index: 222;
-    &::before {
-      content: '🔗';
-    }
   }
 }
 :deep(.custom-ai-style) {
