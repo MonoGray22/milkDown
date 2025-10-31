@@ -1,5 +1,5 @@
 import { $prose } from '@milkdown/utils';
-import { serializerCtx } from '@milkdown/core';
+import { parserCtx, serializerCtx } from '@milkdown/core';
 import { Plugin, TextSelection } from 'prosemirror-state';
 import { TooltipProvider } from '@milkdown/kit/plugin/tooltip';
 
@@ -209,11 +209,20 @@ function createTooltipContent (type, selection, isHaveLock, canModifySystemData)
   return actionMap[type] || ' ';
 }
 
-function replaceSelectedText (editorView, newText) {
+function replaceSelectedText (ctx, editorView, newText) {
   if (!editorView || !newText) return;
-  editorView.dispatch(
-    editorView.state.tr.replaceSelectionWith(editorView.state.schema.text(newText))
-  );
+  const parser = ctx.get(parserCtx);
+  let content;
+  let tr;
+  try {
+    content = parser(newText);
+    tr = editorView.state.tr.replaceSelectionWith(content);
+  } catch (err) {
+    console.error('Markdown 解析失败:', err);
+    tr = editorView.state.tr.replaceSelectionWith(editorView.state.schema.text(newText));
+    return false;
+  }
+  editorView.dispatch(tr);
   clearSelection(editorView);
 }
 
@@ -248,8 +257,8 @@ export const selectionTooltipPlugin = (editorIdOrGetter, isLockOrGetter, canModi
             editorView.dispatch(editorView.state.tr.setMeta('lockTable', { attrs: { lockType } }));
             return;
           }
-          // 流转状态：优化中/已确认
-          if (['optimize', 'verify'].includes(dataLabel)) {
+          // 流转状态至优化中, 'verify'
+          if (['optimize'].includes(dataLabel)) {
             editorView.dispatch(editorView.state.tr.setMeta('updateLock', { dataLabel }));
           }
           provider.hide();
@@ -270,7 +279,7 @@ export const selectionTooltipPlugin = (editorIdOrGetter, isLockOrGetter, canModi
         const editorId = typeof editorIdOrGetter === 'function' ? editorIdOrGetter() : editorIdOrGetter;
         if (data.roomCode === editorId) {
           if (data.action === 'replaceText') {
-            replaceSelectedText(editorView, data.newText);
+            replaceSelectedText(ctx, editorView, data.newText);
           }
           if (data.action === 'replaceNode') {
             editorView.dispatch(editorView.state.tr.setMeta('updateLock', { dataLabel: 'optimize', markdownContent: data.newText }));

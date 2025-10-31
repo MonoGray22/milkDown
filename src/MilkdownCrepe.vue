@@ -32,6 +32,7 @@ const editorRoot = ref(null);
 let currCrepe = null;
 let wsProvider = null;
 let collabService = null;
+let syncedHandler = null;  // 缓存监听器函数
 
 const myLanguages = [
   LanguageDescription.of({
@@ -49,7 +50,7 @@ const isHaveLock = ref(true);
 const isHaveLine = ref(true);
 const canModifySystemData = ref(false); // 是否能对系统数据做更改
 
-const doc = new Doc();
+let doc = new Doc();
 const randomColor = () => Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
 
 // -------------------- 编辑器创建 --------------------
@@ -187,12 +188,25 @@ function setDefaultData (propData) {
 
 // 设置编辑器内容并初始化协同
 async function setMarkdownValue (readonly) {
-  if (wsProvider) wsProvider.disconnect();
-  if (collabService) collabService.disconnect();
+  if (wsProvider) {
+    syncedHandler && wsProvider.off("synced", syncedHandler)
+    wsProvider.disconnect();
+    wsProvider.destroy();
+  };
+  if (collabService) collabService.disconnect()
 
   if (!currCrepe) return;
 
   currCrepe.setReadonly(readonly);
+
+  syncedHandler = (isSynced) => {
+    if (isSynced) {
+      collabService.applyTemplate(defaultValue.value, (remoteNode) => {
+        return !remoteNode || !Boolean(remoteNode.textContent);
+      }).connect();
+    }
+  };
+
   if (isHaveLine.value) {
     wsProvider = new WebsocketProvider(websocketParams.value.url, websocketParams.value.room, doc);
     wsProvider.awareness.setLocalStateField('user', {
@@ -202,13 +216,7 @@ async function setMarkdownValue (readonly) {
     currCrepe.editor.action((ctx) => {
       collabService = ctx.get(collabServiceCtx);
       collabService.bindDoc(doc).setAwareness(wsProvider.awareness).connect();
-      wsProvider.once("synced", (isSynced) => {
-        if (isSynced) {
-          collabService.applyTemplate(defaultValue.value, (remoteNode) => {
-            return !remoteNode || !Boolean(remoteNode.textContent);
-          }).connect();
-        }
-      });
+      wsProvider.once("synced", syncedHandler);
     });
   } else {
     currCrepe.editor.action(replaceAll(defaultValue.value, true));
@@ -287,7 +295,11 @@ function receiveMessage (event) {
 
 // -------------------- 清理 --------------------
 function clearData () {
-  if (wsProvider) wsProvider.disconnect();
+  if (wsProvider) {
+    wsProvider.disconnect();
+    wsProvider.destroy();
+    syncedHandler && wsProvider.off("synced", syncedHandler)
+  };
   if (collabService) collabService.disconnect();
   if (currCrepe) currCrepe.destroy(true);
   window.removeEventListener('message', receiveMessage);

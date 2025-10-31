@@ -56,10 +56,12 @@ export const nonEditableNode = $node('nonEditable', () => ({
         class: 'non-editable-discuss-btn iconfont icon-taolun3',
         title: '讨论',
       }, '']);
+      // if (node.attrs.lockType === 'frozen') {
       rightActionDom.push(['div', {
         class: 'non-editable-vote-btn iconfont icon-toupiao1',
         title: '投票',
       }, '']);
+      // }
     }
     if (node.attrs.sourceId) {
       rightActionDom.push(['div', {
