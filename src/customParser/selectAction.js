@@ -15,18 +15,24 @@ const LOCK_ACTION = {
   // 草拟
   draft: [
     { key: 'optimize', label: '流转至优化中', icon: 'liuzhuan' },
-    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' }
+    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' },
+    { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
   ],
   // 优化中
   optimize: [
     { key: 'reviseRewrite', label: '润色改写', icon: 'runsegaixie' },
     { key: 'verify', label: '流转至已确认', icon: 'liuzhuan' },
-    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' }
+    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' },
+    { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
   ],
   // 已确认
-  verify: [{ key: 'unlockTable', label: '解锁', icon: 'jiesuo' }],
+  verify: [
+    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' },
+    { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
+  ],
   import: [
-    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' }
+    { key: 'unlockTable', label: '解锁', icon: 'jiesuo' },
+    { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
   ]
 };
 
@@ -226,6 +232,20 @@ function replaceSelectedText (ctx, editorView, newText) {
   clearSelection(editorView);
 }
 
+// 判断是否能锁定为固化
+function checkStandardContent (str) {
+  // (?=.*名称:\s*\S+) ：正向预查，确保包含"名称:"且后面有非空值（\s*匹配任意空格，\S+匹配至少一个非空格字符）
+  // (?=.*定义:\s*\S+) ：正向预查，确保包含"定义:"且后面有非空值
+  // .* ：匹配任意字符，允许其他属性存在
+  // s修饰符：让.匹配包括换行在内的所有字符
+  const reg = /^(?=.*\s*名称\s*[:：]\s*\S+)(?=.*\s*定义\s*[:：]\s*\S+).*$/s;
+
+  // 边界处理：非字符串、空字符串、纯空格字符串直接返回false
+  if (typeof str !== 'string' || str.trim() === '') return false;
+
+  return reg.test(str);
+}
+
 // ====== 插件 ======
 export const selectionTooltipPlugin = (editorIdOrGetter, isLockOrGetter, canModifySystemDataGetter) => $prose((ctx) => {
   return new Plugin({
@@ -254,6 +274,10 @@ export const selectionTooltipPlugin = (editorIdOrGetter, isLockOrGetter, canModi
           if (['lockTable-frozen', 'lockTable-transition'].includes(dataLabel)) {
             const lockType = dataLabel.split('-')[1];
             provider.hide();
+            if (lockType === 'frozen') {
+              if (!checkStandardContent(getSelectedText(editorView)))
+                return;
+            }
             editorView.dispatch(editorView.state.tr.setMeta('lockTable', { attrs: { lockType } }));
             return;
           }

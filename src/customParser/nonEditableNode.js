@@ -25,6 +25,7 @@ export const nonEditableNode = $node('nonEditable', () => ({
     sourceId: { default: null }, // 外部系统记录主键
     sourceType: { default: null }, // 外部系统记录类型
     editStatus: { default: 'checkIn' }, // 编辑状态：检入/检出
+    createType: { default: 'user' }, // 创建方式：AI 自动/手动创建
   },
   parseDOM: [
     {
@@ -38,7 +39,8 @@ export const nonEditableNode = $node('nonEditable', () => ({
             key: dom.getAttribute('data-key'),
             sourceId: dom.getAttribute('data-source-id'),
             sourceType: dom.getAttribute('data-source-type'),
-            editStatus: dom.getAttribute('data-edit-status')
+            editStatus: dom.getAttribute('data-edit-status'),
+            createType: dom.getAttribute('data-create-type')
           };
         }
       },
@@ -46,42 +48,56 @@ export const nonEditableNode = $node('nonEditable', () => ({
   ],
   toDOM: (node) => {
     const classes = ['non-editable'];
-    if (node.attrs.nodeType) classes.push(`non-editable-${node.attrs.nodeType}`);
-    const { label, define } = LOCK_TYPE_INFO[node.attrs.lockType];
+    const { nodeType, lockType, sourceId, sourceType, user, key, editStatus, createType } = node.attrs;
+    if (nodeType) classes.push(`non-editable-${nodeType}`);
+    const { label, define } = LOCK_TYPE_INFO[lockType];
     let childrenNode = [];
     childrenNode.push(['div', { class: 'non-editable-left-action', title: define }, label]); // 左侧操作
     let rightActionDom = ['div', { class: 'non-editable-right-action' }]; // 右侧操作
-    if (node.attrs.nodeType !== 'draft') {
+    if (nodeType !== 'draft') {
       rightActionDom.push(['div', {
         class: 'non-editable-discuss-btn iconfont icon-taolun3',
         title: '讨论',
       }, '']);
-      // if (node.attrs.lockType === 'frozen') {
+      // if (lockType === 'frozen') {
       rightActionDom.push(['div', {
         class: 'non-editable-vote-btn iconfont icon-toupiao1',
         title: '投票',
       }, '']);
       // }
     }
-    if (node.attrs.sourceId) {
+    if (sourceId) {
       rightActionDom.push(['div', {
         class: 'non-editable-link-btn iconfont icon-lianjie2',
         title: '查看引用对象',
       }, '']);
     };
+    if (createType === 'aiAuto') {
+      rightActionDom.push(['div', {
+        class: 'non-editable-ai-auto iconfont icon-rengongzhinengdanao',
+        title: 'AI 自动创建',
+      }, '']);
+    };
+    // if (lockType === 'frozen') {
+    //   rightActionDom.push(['div', {
+    //     class: 'non-editable-ai-auto iconfont icon-rengongzhinengdanao',
+    //     title: 'AI 助手',
+    //   }, '']);
+    // }
     childrenNode.push(rightActionDom); // 左侧操作
     childrenNode.push(['div', { class: 'non-editable-inner', contentEditable: 'false', }, 0]);
     return [
       'div',
       {
         'data-type': 'non-editable',
-        'data-user': node.attrs.user,
-        'data-key': node.attrs.key,
-        'data-lock-type': node.attrs.lockType,
-        'data-node-type': node.attrs.nodeType,
-        'data-source-id': node.attrs.sourceId,
-        'data-source-type': node.attrs.sourceType,
-        'data-edit-status': node.attrs.editStatus,
+        'data-user': user,
+        'data-key': key,
+        'data-lock-type': lockType,
+        'data-node-type': nodeType,
+        'data-source-id': sourceId,
+        'data-source-type': sourceType,
+        'data-edit-status': editStatus,
+        'data-create-type': createType,
         class: classes.join(' '),
         contentEditable: false,
         tabindex: '-1',
@@ -176,6 +192,7 @@ export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
             const linkBtn = target.closest('.non-editable-link-btn');
             const discussBtn = target.closest('.non-editable-discuss-btn');
             const voteBtn = target.closest('.non-editable-vote-btn');
+            const aiAutoBtn = target.closest('.non-editable-ai-auto');
             if (linkBtn) {
               const box = linkBtn.closest('[data-type="non-editable"]');
               window.parent.postMessage({
@@ -186,6 +203,7 @@ export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
                 lockType: box.getAttribute('data-lock-type'),
                 sourceType: box.getAttribute('data-source-type'),
                 editStatus: box.getAttribute('data-edit-status'),
+                createType: box.getAttribute('data-create-type'),
               }, '*');
             }
             if (discussBtn) {
@@ -204,6 +222,14 @@ export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
                 nodeKey: box.getAttribute('data-key')
               }, '*');
             }
+            if (aiAutoBtn) {
+              const box = aiAutoBtn.closest('[data-type="non-editable"]');
+              window.parent.postMessage({
+                action: 'aiAutoBtnClick',
+                roomCode: editorId,
+                nodeKey: box.getAttribute('data-key')
+              }, '*');
+            }
             return true;
           }
           return false;
@@ -211,7 +237,7 @@ export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
         mousedown (view, event) {
           const target = event.target;
           if (target instanceof HTMLElement) {
-            if (target.closest('.non-editable-link-btn') || target.closest('.non-editable-discuss-btn') || target.closest('.non-editable-vote-btn')) {
+            if (target.closest('.non-editable-link-btn') || target.closest('.non-editable-discuss-btn') || target.closest('.non-editable-vote-btn') || target.closest('.non-editable-ai-auto')) {
               event.preventDefault();
               return true;
             }
@@ -225,6 +251,68 @@ export const nonEditablePlugin = (editorIdOrGetter) => $prose((ctx) => {
             return true;
           }
           return false;
+        },
+        paste (view, event) {
+          const text = event.clipboardData?.getData('text/plain') || '';
+          if (!text.includes(':::noneditable')) return false;
+
+          event.preventDefault();                 // ← 必须阻止默认插入
+          event.stopPropagation();
+
+          // 匹配完整语法
+          const match = text.match(/^:::noneditable(?:\[([^\]]*)\])?\s*([\s\S]*?)\s*:::/m);
+          if (!match) return true;
+
+          const rawAttr = (match[1] || '').trim();
+          const markdownBody = match[2].trim();
+          if (!markdownBody) return true;
+
+          // 解析属性
+          const attrs = {
+            lockType: 'transition',
+            nodeType: null,
+            user: null,
+            key: new Date().getTime() + Math.random().toString(36).substring(2, 15),
+            sourceId: null,
+            sourceType: null,
+            editStatus: 'checkIn',
+            createType: 'user'
+          };
+
+          rawAttr.split(/\s+/).forEach(part => {
+            if (!part.includes('=')) return;
+            const [k, ...v] = part.split('=');
+            const value = v.join('='); // 支持 value 中包含 =
+            if (k && attrs.hasOwnProperty(k)) {
+              attrs[k] = value;
+            }
+          });
+
+          // 使用 Milkdown 内置 parser 解析内部 markdown
+          const parser = ctx.get(parserCtx);
+          let fragment;
+          try {
+            const doc = parser(markdownBody);
+            fragment = doc.content;
+          } catch (e) {
+            console.warn('nonEditable 内容解析失败', e);
+            return true;
+          }
+
+          const type = view.state.schema.nodes.nonEditable;
+          if (!type) return true;
+
+          const node = type.create(attrs, fragment);
+          if (!node) return true;
+
+          // 插入节点
+          const tr = view.state.tr.replaceSelectionWith(node, false);
+          console.log(tr)
+          tr.setSelection(TextSelection.create(tr.doc, node.nodeSize));
+          // tr.setSelection(TextSelection.create(tr.doc, tr.selection.to + node.nodeSize));
+          view.dispatch(tr);
+
+          return true; // 已完全处理
         }
       }
     }

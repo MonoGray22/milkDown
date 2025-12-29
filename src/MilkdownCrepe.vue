@@ -2,6 +2,7 @@
 import { collab, collabServiceCtx } from "@milkdown/plugin-collab";
 import { LanguageDescription } from '@codemirror/language'
 import { getMarkdown, getHTML, insert, replaceAll } from '@milkdown/utils';
+import { parserCtx } from '@milkdown/core';
 import { commandsCtx, defaultValueCtx, editorViewCtx } from "@milkdown/kit/core";
 import { TextSelection } from 'prosemirror-state'
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
@@ -33,6 +34,7 @@ let currCrepe = null;
 let wsProvider = null;
 let collabService = null;
 let syncedHandler = null;  // 缓存监听器函数
+const processedTokens = new Set();
 
 const myLanguages = [
   LanguageDescription.of({
@@ -114,23 +116,36 @@ function createEditor (callback) {
       if (!uploadParams.value) return defaultConfig;
       return {
         ...defaultConfig,
-        uploader: async (file, schema) => {
+        uploader: async (files, schema) => {
           const { url, config, imagePrefix } = uploadParams.value;
-          const imgFile = Array.isArray(file) ? file[0] : file;
-          const formdata = new FormData();
-          formdata.append('image', imgFile);
-          try {
-            const res = await fetch(url, {
-              method: 'POST',
-              mode: 'cors',
-              headers: { 'Accept': 'application/json', ...config.headers },
-              body: formdata
-            });
-            const json = await res.json();
-            return [schema.nodes.image.createAndFill({ src: imagePrefix + json.url })];
-          } catch {
-            return [];
+          const images = [];
+          for (let i = 0; i < files.length; i++) {
+            const file = files.item(i);
+            if (!file) {
+              continue;
+            }
+            // 仅处理图片类型文件
+            if (!file.type.includes('image')) {
+              continue;
+            }
+            images.push(file);
           }
+          const nodes = await Promise.all(
+            images.map(async (image) => {
+              const formdata = new FormData();
+              formdata.append('image', image);
+              const res = await fetch(url, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Accept': 'application/json', ...config.headers },
+                body: formdata
+              });
+              const src = await res.json();
+              console.log('上传图片返回值：', src);
+              return schema.nodes.image.createAndFill({ src: imagePrefix + src.url });
+            })
+          );
+          return nodes;
         }
       };
     });
@@ -183,7 +198,12 @@ function setDefaultData (propData) {
   canModifySystemData.value = propData.canModifySystemData ?? false;
   websocketParams.value = propData.websocketParams;
 
-  nextTick(() => setMarkdownValue(Boolean(propData.readonly)));
+  nextTick(() => {
+    createEditor(() => {
+      setMarkdownValue(Boolean(propData.readonly))
+    })
+  }
+  );
 }
 
 // 设置编辑器内容并初始化协同
@@ -201,6 +221,65 @@ async function setMarkdownValue (readonly) {
 
   syncedHandler = (isSynced) => {
     if (isSynced) {
+      wsProvider.awareness.on('change', ({ added, updated, removed }) => {
+        const states = wsProvider.awareness.getStates();
+        for (const [clientId, state] of states) {
+          if (clientId === wsProvider.awareness.clientID) continue;
+          if (state.paste && typeof state.paste === 'object') {
+            const { markdown, editorId, token } = state.paste;
+
+            const allClients = Array.from(states.keys()).sort((a, b) => a - b);
+            const executor = allClients[0];
+            if (wsProvider.awareness.clientID !== executor) continue;
+
+            if (editorId !== websocketParams.value.room) continue;
+
+            if (processedTokens.has(token)) return;
+            processedTokens.add(token);
+
+            const match = markdown.match(/^:::noneditable(?:\[([^\]]*)\])?\s*([\s\S]*?)\s*:::/m);
+            if (!match) return true;
+
+            const rawAttr = (match[1] || '').trim();
+            const markdownBody = match[2].trim();
+
+            if (!markdownBody) return true;
+
+            // 解析属性
+            const attrs = {
+              lockType: 'transition',
+              nodeType: null,
+              user: null,
+              key: new Date().getTime() + Math.random().toString(36).substring(2, 15),
+              sourceId: null,
+              sourceType: null,
+              editStatus: 'checkIn',
+            };
+
+            rawAttr.split(/\s+/).forEach(part => {
+              if (!part.includes('=')) return;
+              const [k, ...v] = part.split('=');
+              const value = v.join('='); // 支持 value 中包含 =
+              if (k && attrs.hasOwnProperty(k)) {
+                attrs[k] = value;
+              }
+            });
+
+            currCrepe.editor.action((ctx) => {
+              ctx.get(commandsCtx).call(InsertNonEditableCommand.key, {
+                editorId,
+                markdownContent: markdownBody,
+                attrs
+              });
+            });
+            // 防止重复触发（清理）
+            const localState = wsProvider.awareness.getLocalState();
+            if (localState && localState.paste === markdown) {
+              wsProvider.awareness.setLocalState({ ...localState, paste: null });
+            }
+          }
+        }
+      });
       collabService.applyTemplate(defaultValue.value, (remoteNode) => {
         return !remoteNode || !Boolean(remoteNode.textContent);
       }).connect();
@@ -213,9 +292,10 @@ async function setMarkdownValue (readonly) {
       color: `#${randomColor()}`,
       name: `${userInfo.value.name}`
     });
+
     currCrepe.editor.action((ctx) => {
       collabService = ctx.get(collabServiceCtx);
-      collabService.bindDoc(doc).setAwareness(wsProvider.awareness).connect();
+      collabService.bindDoc(doc).setAwareness(wsProvider.awareness);
       wsProvider.once("synced", syncedHandler);
     });
   } else {
@@ -227,7 +307,6 @@ async function setMarkdownValue (readonly) {
 function receiveMessage (event) {
   if (event.origin !== window.location.origin) return;
 
-  if (!currCrepe) return;
 
   const { data } = event;
 
@@ -236,6 +315,7 @@ function receiveMessage (event) {
     setDefaultData(data);
     return;
   }
+  if (!currCrepe) return;
 
   // 非当前房间的消息忽略
   if (data.roomCode !== websocketParams.value.room) return;
@@ -276,7 +356,8 @@ function receiveMessage (event) {
         user: userInfo.value.name,
         editorId: websocketParams.value.room,
         targetKey: data.targetKey,
-        attrs: data.infoParams
+        attrs: data.infoParams,
+        markdownContent: data.markdownContent
       });
     });
     return;
@@ -308,14 +389,14 @@ function clearData () {
 // -------------------- 生命周期 --------------------
 onMounted(() => {
   nextTick(() => {
-    createEditor(() => {
-      window.addEventListener('message', receiveMessage);
-      // 直接 ready
-      window.parent.postMessage({
-        action: 'ready',
-        roomCode: websocketParams.value.room
-      }, '*');
-    });
+    //   createEditor(() => {
+    window.addEventListener('message', receiveMessage);
+    // 直接 ready
+    window.parent.postMessage({
+      action: 'ready',
+      roomCode: websocketParams.value.room
+    }, '*');
+    //   });
   });
 });
 
