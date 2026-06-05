@@ -36,6 +36,11 @@ let collabService = null;
 let syncedHandler = null;  // 缓存监听器函数
 const processedTokens = new Set();
 
+// 目录相关状态
+const tableOfContents = ref([]);
+const isTocVisible = ref(true);
+const tocExpanded = ref(true);
+
 const myLanguages = [
   LanguageDescription.of({
     name: 'Mermaid',
@@ -141,7 +146,6 @@ function createEditor (callback) {
                 body: formdata
               });
               const src = await res.json();
-              console.log('上传图片返回值：', src);
               return schema.nodes.image.createAndFill({ src: imagePrefix + src.url });
             })
           );
@@ -174,6 +178,7 @@ function createEditor (callback) {
   editor.remove(remarkPreserveEmptyLinePlugin);
 
   currCrepe.create().then(() => {
+    setupTocListener();
     callback?.();
   });
 }
@@ -187,6 +192,176 @@ function getCurrMarkdown () {
     html: currCrepe.editor.action(getHTML()),
     markdown: currCrepe.editor.action(getMarkdown())
   }, '*');
+}
+
+// 生成目录
+function generateTableOfContents () {
+  if (!currCrepe) return;
+  const toc = [];
+  let idCounter = 1;
+  let needsUpdate = false;
+  let transactions = [];
+
+  currCrepe.editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx);
+    if (!view) {
+      return;
+    }
+
+    const { state } = view;
+    const { doc } = state;
+
+    // 遍历文档结构，提取标题节点
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'heading') {
+        const level = node.attrs.level;
+        const text = node.textContent;
+        const id = `heading-${idCounter++}`;
+
+        // 为标题节点添加 id 属性
+        if (!node.attrs.id) {
+          needsUpdate = true;
+          transactions.push({
+            pos,
+            attrs: {
+              ...node.attrs,
+              id
+            }
+          });
+        }
+
+        toc.push({
+          id: node.attrs.id || id,
+          text,
+          level,
+          pos
+        });
+      }
+    });
+
+    // 统一应用所有事务
+    if (needsUpdate) {
+      let tr = state.tr;
+      transactions.forEach(({ pos, attrs }) => {
+        tr = tr.setNodeMarkup(pos, null, attrs);
+      });
+      view.dispatch(tr);
+    }
+  });
+
+  tableOfContents.value = toc;
+}
+// 监听编辑器内容变化，更新目录
+function setupTocListener () {
+  if (!currCrepe) return;
+
+  currCrepe.editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx);
+    if (!view) {
+      return;
+    }
+
+    // 初始生成目录
+    generateTableOfContents();
+
+    // 使用 ProseMirror 的方式监听文档变化
+    const originalDispatch = view.dispatch;
+    view.dispatch = (tr) => {
+      const result = originalDispatch.call(view, tr);
+      // 当文档内容发生变化时，更新目录
+      if (tr.docChanged) {
+        generateTableOfContents();
+      }
+      return result;
+    };
+  });
+}
+
+// 滚动到指定标题
+function scrollToHeading (id) {
+  if (!currCrepe) {
+    return;
+  }
+
+  currCrepe.editor.action((ctx) => {
+    const view = ctx.get(editorViewCtx);
+    if (!view) {
+      return;
+    }
+
+    const { state } = view;
+    const { doc } = state;
+
+    let targetPos = null;
+    let targetNode = null;
+
+    doc.descendants((node, pos) => {
+      if (node.type.name === 'heading' && node.attrs.id === id) {
+        targetPos = pos;
+        targetNode = node;
+        return false; // 停止遍历
+      }
+    });
+
+    if (targetPos !== null && targetNode) {
+      // 创建一个选择并滚动到该位置
+      const tr = state.tr.setSelection(TextSelection.create(state.doc, targetPos));
+      view.dispatch(tr);
+      view.focus();
+
+      // 滚动到视图可见区域
+      try {
+        // 获取标题节点的 DOM 元素
+        const domAtPos = view.domAtPos(targetPos);
+
+        if (domAtPos.node) {
+          // 找到实际的标题元素
+          let headingElement = domAtPos.node;
+
+          // 向上查找，直到找到标题元素或到达根元素
+          while (headingElement && headingElement.nodeType !== 1) {
+            headingElement = headingElement.parentElement;
+          }
+
+          // 如果找到的元素不是标题元素，继续向上查找
+          while (headingElement && headingElement.tagName && !headingElement.tagName.match(/^H[1-6]$/)) {
+            headingElement = headingElement.parentElement;
+          }
+
+          if (headingElement) {
+            // 使用 scrollIntoView 方法，确保标题滚动到页面中央
+            headingElement.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest'
+            });
+          } else {
+            // 尝试使用 view.nodeDOM 获取节点
+            const nodeDom = view.nodeDOM(targetPos);
+            if (nodeDom) {
+              nodeDom.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'nearest'
+              });
+            }
+          }
+        } else {
+          // 尝试使用 view.nodeDOM 获取节点
+          const nodeDom = view.nodeDOM(targetPos);
+          if (nodeDom) {
+            nodeDom.scrollIntoView({
+              behavior: 'smooth',
+              block: 'center',
+              inline: 'nearest'
+            });
+          }
+        }
+      } catch (error) {
+        // 忽略错误
+      }
+    }
+  });
 }
 
 function setDefaultData (propData) {
@@ -299,7 +474,7 @@ async function setMarkdownValue (readonly) {
       wsProvider.once("synced", syncedHandler);
     });
   } else {
-    currCrepe.editor.action(replaceAll(defaultValue.value, true));
+    currCrepe.editor.action(replaceAll(defaultValue.value));
   }
 }
 
@@ -312,7 +487,7 @@ function receiveMessage (event) {
 
   // 初始化
   if (data.action === 'init') {
-    setDefaultData(data);
+    websocketParams.value.room === 'markdown' && setDefaultData(data);
     return;
   }
   if (!currCrepe) return;
@@ -322,6 +497,10 @@ function receiveMessage (event) {
 
   if (data.action === 'getMarkdown') {
     getCurrMarkdown();
+    return;
+  }
+  if (data.action === 'replaceEditor') {
+    currCrepe.editor.action(replaceAll(data.markdownValue));
     return;
   }
   if (data.action === 'insertMarkdown') {
@@ -389,29 +568,157 @@ function clearData () {
 // -------------------- 生命周期 --------------------
 onMounted(() => {
   nextTick(() => {
-    //   createEditor(() => {
+    // createEditor(() => {
     window.addEventListener('message', receiveMessage);
     // 直接 ready
     window.parent.postMessage({
       action: 'ready',
       roomCode: websocketParams.value.room
     }, '*');
-    //   });
   });
+  // });
 });
 
 onBeforeUnmount(clearData);
 </script>
 
 <template>
-  <div class="milkdown-editor-style" ref="editorRoot"></div>
+  <div class="milkdown-editor-container">
+    <!-- 编辑器 -->
+    <div class="milkdown-editor-style" ref="editorRoot"></div>
+    <!-- 目录 -->
+    <div v-if="isTocVisible" :class="['milkdown-toc', {'toc-expanded': tocExpanded}]">
+      <div class="toc-header">
+        <h3>目录</h3>
+        <button class="toc-toggle" @click="tocExpanded = !tocExpanded">
+          <i v-show="tocExpanded" class="iconfont icon-shouqi" title="收起目录"></i>
+          <i v-show="!tocExpanded" class="iconfont icon-zhankai" title="展开目录"></i>
+        </button>
+      </div>
+      <div v-if="tocExpanded" class="toc-content">
+        <ul v-if="tableOfContents.length > 0" class="toc-list">
+          <li v-for="item in tableOfContents" :key="item.id" :class="`toc-item toc-level-${item.level}`"
+            @click="scrollToHeading(item.id)">
+            <a-tooltip :title="item.text">
+              {{ item.text }}
+            </a-tooltip>
+          </li>
+        </ul>
+        <div v-else class="toc-empty"> 无标题内容 </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style lang="less" scoped>
-.milkdown-editor-style {
+.milkdown-editor-container {
+  display: flex;
   width: 100%;
   height: 100%;
-  // height: 40%;
+  overflow: hidden;
+}
+.toc-expanded {
+  width: 250px;
+}
+.milkdown-toc {
+  // width: 250px;
+  height: 100%;
+  background-color: #f8f9fa;
+  border-right: 1px solid #e9ecef;
+  overflow-y: auto;
+  padding: 20px;
+  box-sizing: border-box;
+
+  .toc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+
+    h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .toc-toggle {
+      background: none;
+      border: none;
+      font-size: 12px;
+      cursor: pointer;
+      color: #666;
+      padding: 0;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+
+  .toc-content {
+    .toc-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+
+      .toc-item {
+        padding: 6px 0;
+        cursor: pointer;
+        font-size: 14px;
+        color: #333;
+        transition: all 0.2s ease;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &:hover {
+          color: #37618e;
+          background-color: #e3f2fd;
+          padding-left: 8px;
+          border-radius: 4px;
+        }
+
+        &.toc-level-1 {
+          font-weight: 600;
+          padding-left: 0;
+        }
+
+        &.toc-level-2 {
+          padding-left: 15px;
+        }
+
+        &.toc-level-3 {
+          padding-left: 30px;
+        }
+
+        &.toc-level-4 {
+          padding-left: 45px;
+        }
+
+        &.toc-level-5 {
+          padding-left: 60px;
+        }
+
+        &.toc-level-6 {
+          padding-left: 75px;
+        }
+      }
+    }
+
+    .toc-empty {
+      font-size: 14px;
+      color: #999;
+      text-align: center;
+      padding: 20px 0;
+    }
+  }
+}
+
+.milkdown-editor-style {
+  flex: 1;
+  height: 100%;
   overflow: auto;
   :deep(.milkdown) {
     min-height: 100%;

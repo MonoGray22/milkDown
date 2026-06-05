@@ -16,23 +16,23 @@ const LOCK_ACTION = {
   draft: [
     { key: 'optimize', label: '流转至优化中', icon: 'liuzhuan' },
     { key: 'unlockTable', label: '解锁', icon: 'jiesuo' },
-    { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
+    // { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
   ],
   // 优化中
   optimize: [
     { key: 'reviseRewrite', label: '润色改写', icon: 'runsegaixie' },
     { key: 'verify', label: '流转至已确认', icon: 'liuzhuan' },
     { key: 'unlockTable', label: '解锁', icon: 'jiesuo' },
-    { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
+    // { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
   ],
   // 已确认
   verify: [
     { key: 'unlockTable', label: '解锁', icon: 'jiesuo' },
-    { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
+    // { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
   ],
   import: [
     { key: 'unlockTable', label: '解锁', icon: 'jiesuo' },
-    { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
+    // { key: 'quoteEditor', label: '引用至对话框', icon: 'yinhao' }
   ]
 };
 
